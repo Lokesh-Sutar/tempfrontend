@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Persona Quant Temp</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                background: #f4f4f4;
+            }
+            #chat {
+                background: #111;
+                color: #eee;
+                padding: 1em;
+                white-space: pre-wrap;
+                border-radius: 8px;
+                margin-top: 1em;
+                max-height: 70vh;
+                overflow-y: auto;
+            }
+            .event {
+                margin-bottom: 1em;
+            }
+            .message {
+                color: #0ff;
+            }
+            .tool-summary {
+                font-weight: bold;
+                color: #ff0;
+                cursor: pointer;
+            }
+            .run {
+                color: #f80;
+            }
+            .log {
+                color: #aaa;
+                font-style: italic;
+            }
+            .end {
+                color: #f33;
+                font-weight: bold;
+            }
+            details {
+                background: #222;
+                padding: 0.5em;
+                border-radius: 4px;
+            }
+            summary {
+                cursor: pointer;
+            }
+            pre {
+                color: #0f0;
+                margin: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Chat with Agent</h1>
+        <input id="input" type="text" placeholder="Type something..." />
+        <button onclick="sendMessage()">Send</button>
+        <div id="chat"></div>
+
+        <script>
+            let messageBuffer = "";
+
+            function appendEvent(type, data, raw = false) {
+                const chatBox = document.getElementById("chat");
+                const div = document.createElement("div");
+                div.className = `event ${type}`;
+
+                if (type === "message") {
+                    messageBuffer += data.content || "";
+                    div.textContent = `[MESSAGE] ${messageBuffer}`;
+
+                    if (chatBox.lastChild?.classList.contains("message")) {
+                        chatBox.lastChild.replaceWith(div);
+                    } else {
+                        chatBox.appendChild(div);
+                    }
+                } else if (type === "tool") {
+                    const toolName = data.tool?.name || "UnknownTool";
+                    let summaryText = `[TOOL] ${toolName}`;
+                    if (data.event === "ToolCallCompleted") {
+                        try {
+                            const result = JSON.parse(
+                                data.tool?.result || "[]",
+                            );
+                            const count = Array.isArray(result)
+                                ? result.length
+                                : 1;
+                            summaryText = `Tool ${toolName} finished with ${count} results`;
+                        } catch {
+                            summaryText = `Tool ${toolName} finished`;
+                        }
+                    } else if (data.event === "ToolCallStarted") {
+                        summaryText = `Tool ${toolName} started...`;
+                    }
+
+                    const details = document.createElement("details");
+                    const summary = document.createElement("summary");
+                    summary.textContent = summaryText;
+                    summary.className = "tool-summary";
+                    const pre = document.createElement("pre");
+                    pre.textContent = JSON.stringify(data, null, 2);
+
+                    details.appendChild(summary);
+                    details.appendChild(pre);
+                    div.appendChild(details);
+                    chatBox.appendChild(div);
+                } else {
+                    div.textContent = `[${type.toUpperCase()}] ${raw ? data : JSON.stringify(data, null, 2)}`;
+                    chatBox.appendChild(div);
+                }
+
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+            function sendMessage() {
+                const prompt = document.getElementById("input").value;
+                const evtSource = new EventSource(
+                    `/api/chat?prompt=${encodeURIComponent(prompt)}`,
+                );
+
+                const chatBox = document.getElementById("chat");
+                chatBox.textContent = "";
+                messageBuffer = "";
+
+                evtSource.addEventListener("message", (event) => {
+                    const data = JSON.parse(event.data);
+                    appendEvent("message", data);
+                });
+
+                evtSource.addEventListener("tool", (event) => {
+                    const data = JSON.parse(event.data);
+                    appendEvent("tool", data);
+                });
+
+                evtSource.addEventListener("run", (event) => {
+                    const data = JSON.parse(event.data);
+                    appendEvent("run", data);
+                });
+
+                evtSource.addEventListener("log", (event) => {
+                    const data = JSON.parse(event.data);
+                    appendEvent("log", data);
+                });
+
+                evtSource.addEventListener("end", (event) => {
+                    appendEvent("end", event.data, true);
+                    evtSource.close();
+                });
+            }
+        </script>
+    </body>
+</html>
