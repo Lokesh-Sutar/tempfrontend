@@ -1,4 +1,5 @@
 import { Menu, Sun, Moon } from 'lucide-react'
+import { ColorPicker } from './ColorPicker'
 
 interface HeaderProps {
   darkMode: boolean
@@ -7,9 +8,14 @@ interface HeaderProps {
   showAgents: boolean
   onToggleSidebar: () => void
   showSidebar: boolean
+  primaryColor: string
+  tempColor: string
+  onColorChange: (color: string) => void
+  onConfirmColor: () => void
+  onResetColor: () => void
 }
 
-export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents, onToggleSidebar, showSidebar }: HeaderProps) {
+export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents, onToggleSidebar, showSidebar, primaryColor, tempColor, onColorChange, onConfirmColor, onResetColor }: HeaderProps) {
   return (
     <header className={`h-16 px-6 flex items-center justify-between border-b ${
       darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
@@ -25,7 +31,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
         >
           <Menu size={20} />
         </button>
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--primary)' }}>
           <span className="text-white font-bold text-sm">PQ</span>
         </div>
         <h1 className="text-xl font-semibold">PersonaQuant</h1>
@@ -36,14 +42,23 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
           onClick={onToggleAgents}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             showAgents 
-              ? 'bg-blue-600 text-white' 
+              ? 'text-white' 
               : darkMode 
                 ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
+          style={showAgents ? { backgroundColor: 'var(--primary)' } : {}}
         >
           {showAgents ? 'Hide Agents' : 'Show Agents'}
         </button>
+        
+        <ColorPicker
+          color={tempColor}
+          onChange={onColorChange}
+          onConfirm={onConfirmColor}
+          onReset={onResetColor}
+          darkMode={darkMode}
+        />
         
         <button
           onClick={onToggleDarkMode}

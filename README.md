@@ -1,6 +1,6 @@
 to start server:
 ```
-uvicorn main:app --reeload
+uvicorn main:app --reload
 ```
 
 to start frontend

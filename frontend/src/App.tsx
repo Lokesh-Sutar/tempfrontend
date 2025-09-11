@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ThemeProvider, useTheme } from './components/theme-provider'
 import { Header } from './components/Header'
 import { LeftSidebar } from './components/LeftSidebar'
@@ -8,7 +8,10 @@ import { RightAgentPanel } from './components/RightAgentPanel'
 function AppContent() {
   const { theme, setTheme } = useTheme()
   const [showAgents, setShowAgents] = useState(false)
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(false)
+  const [primaryColor, setPrimaryColor] = useState('#3b82f6')
+  const [tempColor, setTempColor] = useState('#3b82f6')
+
   const [agentStatuses, setAgentStatuses] = useState({
     Watcher: 'Ready' as const,
     Analyst: 'Ready' as const,
@@ -24,24 +27,33 @@ function AppContent() {
   }
 
   const simulateAgentWork = () => {
-    // Demo: Simulate Watcher agent working when search happens
+    // Set Watcher to Processing when tools start
     setAgentStatuses(prev => ({ ...prev, Watcher: 'Processing' }))
-    
-    setTimeout(() => {
-      setAgentStatuses(prev => ({ ...prev, Analyst: 'Processing' }))
-    }, 2000)
-    
-    setTimeout(() => {
-      setAgentStatuses(prev => ({ ...prev, Adviser: 'Processing' }))
-    }, 4000)
-    
-    setTimeout(() => {
-      setAgentStatuses({
-        Watcher: 'Monitoring',
-        Analyst: 'Ready', 
-        Adviser: 'Ready'
-      })
-    }, 6000)
+  }
+
+  const handleToolsCompleted = () => {
+    // Set Watcher to Ready when all tools complete
+    setAgentStatuses(prev => ({ ...prev, Watcher: 'Ready' }))
+  }
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--primary', primaryColor)
+  }, [primaryColor])
+
+  const handleColorChange = (color: string) => {
+    setTempColor(color)
+  }
+
+
+
+  const confirmColor = () => {
+    setPrimaryColor(tempColor)
+  }
+
+  const resetColor = () => {
+    const defaultColor = isDark ? '#2563eb' : '#3b82f6'
+    setTempColor(defaultColor)
+    setPrimaryColor(defaultColor)
   }
 
   return (
@@ -53,6 +65,11 @@ function AppContent() {
         showAgents={showAgents}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
         showSidebar={showSidebar}
+        primaryColor={primaryColor}
+        tempColor={tempColor}
+        onColorChange={handleColorChange}
+        onConfirmColor={confirmColor}
+        onResetColor={resetColor}
       />
       
       <div className="flex-1 flex overflow-hidden">
@@ -61,6 +78,13 @@ function AppContent() {
           darkMode={isDark} 
           onMessageSent={simulateAgentWork} 
           onSearchResults={setSearchResults}
+          onWatcherClick={() => handleAgentClick('Watcher')}
+          onToolsCompleted={handleToolsCompleted}
+          onToggleAgents={() => {
+            if (!showAgents) {
+              setShowAgents(true);
+            }
+          }}
         />
         <RightAgentPanel 
           darkMode={isDark} 
