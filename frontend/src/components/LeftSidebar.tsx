@@ -6,10 +6,8 @@ interface LeftSidebarProps {
 }
 
 export function LeftSidebar({ darkMode, show }: LeftSidebarProps) {
-  if (!show) return null
-  
   return (
-    <div className={`w-64 h-full flex flex-col ${
+    <div className={`w-full h-full flex flex-col ${
       darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'
     } border-r`}>
       <div className="flex-1"></div>

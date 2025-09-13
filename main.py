@@ -26,10 +26,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=['*', 'http://localhost:5173', 'http://127.0.0.1:5173'],
     allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allow_headers=['*', 'Content-Type', 'Authorization', 'Accept', 'Cache-Control'],
+    expose_headers=['*'],
 )
 
 
@@ -125,7 +126,7 @@ async def root():
 
 
 @app.get('/api/chat')
-async def chat(prompt: str):
+async def chat(prompt: str, response_class=StreamingResponse):
     """
     Handles chat requests by streaming processed agent events.
     The main logic is now encapsulated in the `process_event` function.
@@ -149,4 +150,14 @@ async def chat(prompt: str):
             error_data = json.dumps({'error': str(e)})
             yield f'event: error\ndata: {error_data}\n\n'
 
-    return StreamingResponse(event_generator(), media_type='text/event-stream')
+    return StreamingResponse(
+        event_generator(), 
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+        }
+    )

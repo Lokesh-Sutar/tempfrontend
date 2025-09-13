@@ -69,6 +69,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
     onMessageSent?.();
 
     try {
+      // const eventSource = new EventSource(`https://ljiu86srov94.share.zrok.io/api/chat?prompt=${encodeURIComponent(userMessage)}`);
       const eventSource = new EventSource(`http://localhost:8000/api/chat?prompt=${encodeURIComponent(userMessage)}`);
       console.log('EventSource created. Waiting for connection...');
 
@@ -79,7 +80,6 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         console.log('%cEventSource connected!', 'color: green; font-weight: bold;');
       };
 
-      // ✅ ADD THIS LISTENER FOR RUN EVENTS
       eventSource.addEventListener('run', (event) => {
         const data = JSON.parse(event.data);
         console.log('%cReceived RUN event:', 'color: purple;', data);
@@ -98,7 +98,6 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           });
           finalResult = data.payload.content;
           
-          // Set Watcher status to Ready when run completes
           if (onToolsCompleted) {
             onToolsCompleted();
           }
@@ -110,8 +109,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         console.log('%cReceived TOOL event:', 'color: blue;', data);
         
         if (data.event === 'ToolCallStarted') {
-          // Update Watcher status to Processing when tools start
-          onMessageSent?.(); // This triggers agent status update to Processing
+          onMessageSent?.();
         }
         
         if (data.event === 'ToolCallCompleted') {
@@ -133,8 +131,6 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           });
         }
       });
-
-      // Remove content streaming to avoid duplication
 
       eventSource.addEventListener('end', (event) => {
         console.log('%cReceived END event. Final message:', 'color: red;', finalResult);
@@ -205,7 +201,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                     }
                                   }, 100);
                                 }}
-                                className={`block text-sm px-2 py-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${
+                                className={`block text-sm px-2 py-1 rounded cursor-pointer hover:opacity-80 hover:scale-103 transition-all duration-200 ease-out ${
                                   darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200 text-gray-700'
                                 }`}>
                                 {tool.name}
@@ -316,7 +312,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
               ref={textareaRef}
             />
             <button
-              className="absolute right-3 bottom-4.5 p-2 text-white rounded-lg disabled:opacity-50 transition-colors hover:opacity-90"
+              className="absolute right-3 bottom-4.5 p-2 text-white rounded-lg disabled:opacity-50 transition-all duration-200 ease-out hover:opacity-90 hover:scale-110 active:scale-95"
               style={{ backgroundColor: 'var(--primary)' }}
               onClick={sendMessage}
               disabled={loading || !input.trim()}

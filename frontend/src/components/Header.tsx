@@ -23,7 +23,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className={`p-2 rounded-lg transition-colors ${
+          className={`p-2 rounded-lg transition-all duration-200 ease-out hover:scale-110 active:scale-95 ${
             darkMode 
               ? 'text-gray-300 hover:bg-gray-800' 
               : 'text-gray-700 hover:bg-gray-100'
@@ -40,7 +40,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleAgents}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ease-out hover:scale-105 active:scale-95 ${
             showAgents 
               ? 'text-white' 
               : darkMode 
@@ -62,7 +62,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
         
         <button
           onClick={onToggleDarkMode}
-          className={`p-2 rounded-lg transition-colors ${
+          className={`p-2 rounded-lg transition-all duration-200 ease-out hover:scale-110 active:scale-95 ${
             darkMode 
               ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'

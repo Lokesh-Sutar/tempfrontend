@@ -4,6 +4,7 @@ import { Header } from './components/Header'
 import { LeftSidebar } from './components/LeftSidebar'
 import { Chat } from './components/Chat'
 import { RightAgentPanel } from './components/RightAgentPanel'
+import { ResizablePanel } from './components/ResizablePanel'
 
 function AppContent() {
   const { theme, setTheme } = useTheme()
@@ -73,7 +74,17 @@ function AppContent() {
       />
       
       <div className="flex-1 flex overflow-hidden">
-        <LeftSidebar darkMode={isDark} show={showSidebar} />
+        <ResizablePanel
+          side="left"
+          minWidth={200}
+          maxWidth={400}
+          defaultWidth={280}
+          show={showSidebar}
+          darkMode={isDark}
+        >
+          <LeftSidebar darkMode={isDark} show={showSidebar} />
+        </ResizablePanel>
+        
         <Chat 
           darkMode={isDark} 
           onMessageSent={simulateAgentWork} 
@@ -86,14 +97,24 @@ function AppContent() {
             }
           }}
         />
-        <RightAgentPanel 
-          darkMode={isDark} 
-          show={showAgents} 
-          agentStatuses={agentStatuses}
-          expandedAgent={expandedAgent}
-          onAgentClick={handleAgentClick}
-          searchResults={searchResults}
-        />
+        
+        <ResizablePanel
+          side="right"
+          minWidth={300}
+          maxWidth={600}
+          defaultWidth={380}
+          show={showAgents}
+          darkMode={isDark}
+        >
+          <RightAgentPanel 
+            darkMode={isDark} 
+            show={showAgents} 
+            agentStatuses={agentStatuses}
+            expandedAgent={expandedAgent}
+            onAgentClick={handleAgentClick}
+            searchResults={searchResults}
+          />
+        </ResizablePanel>
       </div>
     </div>
   )

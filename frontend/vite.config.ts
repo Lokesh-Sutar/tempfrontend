@@ -11,3 +11,13 @@ export default defineConfig({
     },
   },
 })
+
+server: {
+  proxy: {
+    '/api': {
+      target: 'https://pyramidlike-platonically-jeffrey.ngrok-free.app',
+      changeOrigin: true,
+      secure: false,
+    },
+  },
+}
