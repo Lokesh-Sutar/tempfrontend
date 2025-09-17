@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 interface ChatProps {
@@ -11,57 +11,83 @@ interface ChatProps {
   onToggleAgents?: () => void
 }
 
+interface ToolDetails {
+  name: string
+  agent: string
+  toolCallId?: string
+  input?: any
+  result?: any
+  duration?: number
+  status?: 'started' | 'completed'
+  error?: boolean
+  createdAt?: number
+}
+
+interface AgentRun {
+  name: string
+  tools: string[]
+  content: string
+  completed: boolean
+  currentRunId?: string
+  toolDetails?: ToolDetails[]
+}
+
+interface TeamRun {
+  content: string
+  completed: boolean
+}
+
 export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick, onToolsCompleted, onToggleAgents }: ChatProps) {
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<{type: string, content: string, tools?: {name: string, result: any, args?: any}[]}[]>([])
+  const [messages, setMessages] = useState<{type: string, content: string, agentRuns?: AgentRun[], teamRun?: TeamRun}[]>([])
   const [loading, setLoading] = useState(false)
-  const latestToolsRef = useRef<{name: string, result: any}[] | null>(null)
+  const [currentRuns, setCurrentRuns] = useState<AgentRun[]>([])
+  const [currentRunIndex, setCurrentRunIndex] = useState(-1)
+  const [teamRun, setTeamRun] = useState<TeamRun>({ content: '', completed: false })
+  const [teamRunActive, setTeamRunActive] = useState(false)
+  const [expandedCards, setExpandedCards] = useState<{[key: string]: boolean}>({})
+  const [selectedTool, setSelectedTool] = useState<ToolDetails | null>(null)
+  const [toolEventData, setToolEventData] = useState<{[key: string]: any}>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Add global function for tool buttons
-  if (typeof window !== 'undefined') {
-    (window as any).openTool = (toolName: string, result: any) => {
-      if (onSearchResults) {
-        onSearchResults(result)
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedTool) {
+        setSelectedTool(null)
       }
     }
-  }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [selectedTool])
 
-  // Use useEffect to pass tools when they're updated
-  useEffect(() => {
-    if (latestToolsRef.current && onSearchResults) {
-      onSearchResults(latestToolsRef.current);
-      latestToolsRef.current = null; // Clear after use
-    }
-  }, [messages, onSearchResults]);
-
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  const handleWatcherClick = () => {
-    // Get the latest AI response with tools
-    const aiResponses = messages.filter(m => m.type === 'ai-response');
-    const latestResponse = aiResponses[aiResponses.length - 1];
-    if (latestResponse?.tools && onSearchResults) {
-      onSearchResults(latestResponse.tools);
-    }
-    if (onWatcherClick) {
-      onWatcherClick();
-    }
-  }
+  useEffect(() => {
+    // Auto-expand agent cards when they first get content or tools
+    currentRuns.forEach((run, index) => {
+      if ((run.tools.length > 0 || run.content) && !expandedCards[`live-${index}`]) {
+        setExpandedCards(prev => ({ ...prev, [`live-${index}`]: true }));
+      }
+    });
+  }, [currentRuns]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
 
     const userMessage = input;
-    setMessages(prev => [...prev, {type: 'user', content: userMessage}]);
+    setMessages(prev => [...prev, {type: 'user', content: userMessage}, {type: 'ai-processing', content: ''}]);
     setInput('');
     setLoading(true);
     
-    // Reset textarea height after clearing input
+    // Reset state for new conversation
+    setCurrentRuns([]);
+    setCurrentRunIndex(-1);
+    setTeamRun({ content: '', completed: false });
+    setTeamRunActive(false);
+    
     if (textareaRef.current) {
       textareaRef.current.style.height = '56px';
     }
@@ -69,72 +95,468 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
     onMessageSent?.();
 
     try {
-      // const eventSource = new EventSource(`https://ljiu86srov94.share.zrok.io/api/chat?prompt=${encodeURIComponent(userMessage)}`);
       const eventSource = new EventSource(`http://localhost:8000/api/chat?prompt=${encodeURIComponent(userMessage)}`);
-      console.log('EventSource created. Waiting for connection...');
-
+      
       let finalResult = '';
-      let currentAIMessage = '';
-
-      eventSource.onopen = () => {
-        console.log('%cEventSource connected!', 'color: green; font-weight: bold;');
-      };
 
       eventSource.addEventListener('run', (event) => {
         const data = JSON.parse(event.data);
-        console.log('%cReceived RUN event:', 'color: purple;', data);
+        console.log('🏃 RUN EVENT:', JSON.stringify(data, null, 2));
         
-        if (data.event === 'RunCompleted' && data.payload?.content) {
-          setLoading(false);
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg?.type === 'ai-response') {
-              lastMsg.content = data.payload.content;
-            } else {
-              newMessages.push({type: 'ai-response', content: data.payload.content});
+        if (data.event === 'TeamRunStarted') {
+          setTeamRunActive(true);
+          setTeamRun({ content: '', completed: false });
+          // Initialize agent cards but don't show them until they have content
+          setCurrentRuns([
+            { name: 'Finance Agent', tools: [], content: '', completed: false },
+            { name: 'Sentiment Agent', tools: [], content: '', completed: false }
+          ]);
+        }
+        
+        // Handle individual agent run events
+        if (data.event === 'RunStarted' && data.payload?.agent_name && data.meta?.runId) {
+          const agentName = data.payload?.agent_name;
+          const runId = data.meta.runId;
+          
+          // Map agent_name to display name
+          let targetAgent = '';
+          if (agentName === 'Finance_Agent') {
+            targetAgent = 'Finance Agent';
+          } else if (agentName === 'Sentiment_Agent') {
+            targetAgent = 'Sentiment Agent';
+          }
+          
+          if (targetAgent) {
+            setCurrentRuns(prev => 
+              prev.map(run => 
+                run.name === targetAgent 
+                  ? { ...run, completed: false, currentRunId: runId }
+                  : run
+              )
+            );
+          }
+        }
+        
+        if (data.event === 'RunCompleted' && data.payload?.agent_name) {
+          const agentName = data.payload?.agent_name;
+          
+          // Map agent_name to display name
+          let targetAgent = '';
+          if (agentName === 'Finance_Agent') {
+            targetAgent = 'Finance Agent';
+          } else if (agentName === 'Sentiment_Agent') {
+            targetAgent = 'Sentiment Agent';
+          }
+          
+          if (targetAgent) {
+            // Extract tools from the completed run's messages if available
+            let extractedTools: string[] = [];
+            if (data.payload?.messages) {
+              data.payload.messages.forEach((msg: any) => {
+                if (msg.tool_calls) {
+                  msg.tool_calls.forEach((toolCall: any) => {
+                    if (toolCall.function?.name && toolCall.function.name !== 'delegate_task_to_member' && toolCall.function.name !== 'update_user_memory') {
+                      extractedTools.push(toolCall.function.name);
+                    }
+                  });
+                }
+              });
             }
-            return newMessages;
+            
+            setCurrentRuns(prev => 
+              prev.map(run => {
+                if (run.name === targetAgent) {
+                  const newTools = extractedTools.length > 0 ? [...new Set([...run.tools, ...extractedTools])] : run.tools;
+                  return { ...run, completed: true, tools: newTools };
+                }
+                return run;
+              })
+            );
+          }
+        }
+        
+        if (data.event === 'TeamRunCompleted') {
+          setTeamRunActive(false);
+          setLoading(false);
+          
+          // Extract agent runs from member_responses - only show first 2 agents
+          const agentRuns: AgentRun[] = [];
+          if (data.payload?.member_responses) {
+            data.payload.member_responses.slice(0, 2).forEach((response: any, index: number) => {
+              const agentNames = ['Finance Agent', 'Sentiment Agent'];
+              
+              // Extract tools from messages if available
+              let tools: string[] = [];
+              if (response.messages) {
+                response.messages.forEach((msg: any) => {
+                  if (msg.tool_calls) {
+                    msg.tool_calls.forEach((toolCall: any) => {
+                      if (toolCall.function?.name && toolCall.function.name !== 'delegate_task_to_member' && toolCall.function.name !== 'update_user_memory') {
+                        tools.push(toolCall.function.name);
+                      }
+                    });
+                  }
+                });
+              }
+              
+              // Fallback to response.tools if messages don't have tool_calls
+              if (tools.length === 0 && response.tools) {
+                tools = response.tools.map((tool: any) => tool.tool_name).filter((tool: string) => tool !== 'delegate_task_to_member' && tool !== 'update_user_memory');
+              }
+              
+              agentRuns.push({
+                name: agentNames[index] || `Agent ${index + 1}`,
+                tools: tools,
+                content: response.content || '',
+                completed: true
+              });
+            });
+          }
+          
+          const finalTeamRun = { 
+            content: data.payload?.content || '', 
+            completed: true 
+          };
+          
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.type === 'ai-processing') {
+              return [...prev.slice(0, -1), {
+                ...lastMsg,
+                type: 'ai-response',
+                agentRuns: agentRuns,
+                teamRun: finalTeamRun
+              }];
+            }
+            return [...prev, {type: 'ai-response', content: '', agentRuns: agentRuns, teamRun: finalTeamRun}];
           });
-          finalResult = data.payload.content;
+          
+          // Auto-collapse live agent cards when final response is ready
+          setExpandedCards(prev => {
+            const newState = { ...prev };
+            delete newState['live-0'];
+            delete newState['live-1'];
+            return newState;
+          });
+          
+          setCurrentRuns([]);
+          setCurrentRunIndex(-1);
+          setTeamRun({ content: '', completed: false });
           
           if (onToolsCompleted) {
             onToolsCompleted();
           }
         }
       });
-
-      eventSource.addEventListener('tool', (event) => {
-        const data = JSON.parse(event.data);
-        console.log('%cReceived TOOL event:', 'color: blue;', data);
-        
-        if (data.event === 'ToolCallStarted') {
-          onMessageSent?.();
+      
+      const handleToolEvent = (data: any) => {
+        // Store detailed tool event data
+        if (data.payload?.tool?.tool_name) {
+          const toolName = data.payload.tool.tool_name;
+          const agentName = data.payload.agent_name;
+          const toolCallId = data.payload.tool.tool_call_id;
+          const toolKey = `${toolName}-${agentName}-${toolCallId}`;
+          
+          setToolEventData(prev => ({
+            ...prev,
+            [toolKey]: {
+              ...prev[toolKey],
+              name: toolName,
+              agent: agentName,
+              toolCallId: toolCallId,
+              input: data.payload.tool.tool_args,
+              result: data.payload.tool.result,
+              duration: data.payload.tool.metrics?.duration,
+              status: data.event?.includes('Started') ? 'started' : 'completed',
+              error: data.payload.tool.tool_call_error,
+              createdAt: data.payload.created_at || data.payload.tool.created_at
+            }
+          }));
         }
         
-        if (data.event === 'ToolCallCompleted') {
-          const toolName = data.payload?.tool?.tool_name;
-          const toolResult = data.payload?.tool?.result;
+        // Handle individual agent tool events
+        if (data.payload?.agent_name && data.payload?.tool?.tool_name) {
+          const agentName = data.payload.agent_name;
+          const toolName = data.payload.tool.tool_name;
           
-          setMessages(prev => {
-            const newMessages = JSON.parse(JSON.stringify(prev));
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg?.type === 'ai-response') {
-              lastMsg.tools = [...(lastMsg.tools || []), {name: toolName, result: data.payload.tool.result, args: data.payload.tool.tool_args}];
-              latestToolsRef.current = lastMsg.tools;
-            } else {
-              const newTools = [{name: toolName, result: data.payload.tool.result, args: data.payload.tool.tool_args}];
-              newMessages.push({type: 'ai-response', content: '', tools: newTools});
-              latestToolsRef.current = newTools;
+          // Map agent_name to display name
+          let targetAgent = '';
+          if (agentName === 'Finance_Agent') {
+            targetAgent = 'Finance Agent';
+          } else if (agentName === 'Sentiment_Agent') {
+            targetAgent = 'Sentiment Agent';
+          }
+          
+          if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+            setCurrentRuns(prev => 
+              prev.map(run => 
+                run.name === targetAgent 
+                  ? { ...run, tools: [...new Set([...run.tools, toolName])] }
+                  : run
+              )
+            );
+          }
+        }
+      };
+      
+      eventSource.addEventListener('tool', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('🔧 TOOL EVENT:', JSON.stringify(data, null, 2));
+        handleToolEvent(data);
+        
+        // Handle any tool event that might contain agent tool info
+        if (data.event && data.event.includes('Tool') && data.payload) {
+          const agentName = data.payload.agent_name;
+          const toolName = data.payload.tool_name;
+          
+          if (agentName && toolName) {
+            // Map agent_name to display name
+            let targetAgent = '';
+            if (agentName === 'Finance_Agent') {
+              targetAgent = 'Finance Agent';
+            } else if (agentName === 'Sentiment_Agent') {
+              targetAgent = 'Sentiment Agent';
             }
-            return newMessages;
-          });
+            
+            if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+              setCurrentRuns(prev => 
+                prev.map(run => 
+                  run.name === targetAgent 
+                    ? { ...run, tools: [...new Set([...run.tools, toolName])] }
+                    : run
+                )
+              );
+            }
+          }
+        }
+        
+        // Also handle tool events that might have different structure
+        if (data.event === 'ToolCallStarted' && data.payload?.tool_name) {
+          const toolName = data.payload.tool_name;
+          const agentName = data.payload?.agent_name;
+          
+          if (agentName) {
+            // Map agent_name to display name
+            let targetAgent = '';
+            if (agentName === 'Finance_Agent') {
+              targetAgent = 'Finance Agent';
+            } else if (agentName === 'Sentiment_Agent') {
+              targetAgent = 'Sentiment Agent';
+            }
+            
+            if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+              setCurrentRuns(prev => 
+                prev.map(run => 
+                  run.name === targetAgent 
+                    ? { ...run, tools: [...new Set([...run.tools, toolName])] }
+                    : run
+                )
+              );
+            }
+          }
+        }
+        
+        if (data.event === 'TeamToolCallStarted') {
+          const toolName = data.payload?.tool?.tool_name;
+          const memberId = data.payload?.tool?.tool_args?.member_id;
+          
+          if (toolName === 'delegate_task_to_member' && memberId) {
+            const taskDescription = data.payload?.tool?.tool_args?.task_description || '';
+            
+            // Map member_id to agent - using the new backend member_ids
+            let targetAgent = '';
+            if (memberId === 'agent-1') {
+              targetAgent = 'Finance Agent';
+            } else if (memberId === 'agent-2') {
+              targetAgent = 'Sentiment Agent';
+            }
+            
+            if (targetAgent) {
+              setCurrentRuns(prev => 
+                prev.map(run => 
+                  run.name === targetAgent 
+                    ? { ...run, content: `Working on: ${taskDescription}` }
+                    : run
+                )
+              );
+            }
+          }
+          
+          // Show team-level tool usage
+          if (toolName && teamRunActive) {
+            setTeamRun(prev => ({
+              ...prev,
+              content: prev.content + `[Using ${toolName}] `
+            }));
+          }
+        }
+        
+        if (data.event === 'TeamToolCallCompleted') {
+          const toolName = data.payload?.tool?.tool_name;
+          const result = data.payload?.tool?.result;
+          const memberId = data.payload?.tool?.tool_args?.member_id;
+          
+          if (toolName === 'delegate_task_to_member' && result && memberId) {
+            // Map member_id to agent - using the new backend member_ids
+            let targetAgent = '';
+            if (memberId === 'agent-1') {
+              targetAgent = 'Finance Agent';
+            } else if (memberId === 'agent-2') {
+              targetAgent = 'Sentiment Agent';
+            }
+            
+            if (targetAgent) {
+              setCurrentRuns(prev => 
+                prev.map(run => 
+                  run.name === targetAgent 
+                    ? { ...run, content: result, completed: true }
+                    : run
+                )
+              );
+            }
+          }
+        }
+      });
+      
+      eventSource.addEventListener('tool-finance', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('🔧 FINANCE TOOL EVENT:', JSON.stringify(data, null, 2));
+        handleToolEvent(data);
+      });
+      
+      eventSource.addEventListener('tool-sentiment', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('🔧 SENTIMENT TOOL EVENT:', JSON.stringify(data, null, 2));
+        handleToolEvent(data);
+      });
+      
+      eventSource.addEventListener('content', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('📝 CONTENT EVENT:', JSON.stringify(data, null, 2));
+        
+        if (data.event === 'TeamRunContent') {
+          if (data.payload?.content) {
+            setTeamRunActive(true);
+            setTeamRun(prev => ({
+              ...prev,
+              content: prev.content + data.payload.content
+            }));
+          }
+        }
+        
+        // Handle individual agent content events
+        if (data.event === 'RunContent' && data.payload?.agent_name) {
+          const content = data.payload?.content;
+          const agentName = data.payload?.agent_name;
+          
+          if (content && agentName) {
+            // Map agent_name to display name
+            let targetAgent = '';
+            if (agentName === 'Finance_Agent') {
+              targetAgent = 'Finance Agent';
+            } else if (agentName === 'Sentiment_Agent') {
+              targetAgent = 'Sentiment Agent';
+            }
+            
+            if (targetAgent) {
+              setCurrentRuns(prev => 
+                prev.map(run => {
+                  if (run.name === targetAgent && run.currentRunId === data.meta?.runId) {
+                    return { ...run, content: run.content + content };
+                  }
+                  return run;
+                })
+              );
+            }
+          }
+        }
+      });
+      
+      eventSource.addEventListener('log', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('📋 LOG EVENT:', JSON.stringify(data, null, 2));
+        
+        // Check all possible tool event types
+        if (data.event && data.event.includes('Tool')) {
+          console.log('🔧 INDIVIDUAL TOOL EVENT FOUND:', data.event, data.payload);
+        }
+        
+        // Handle individual agent tool events
+        if (data.event === 'ToolCallStarted' && data.payload?.agent_name && data.payload?.tool_name) {
+          const agentName = data.payload.agent_name;
+          const toolName = data.payload.tool_name;
+          
+          // Map agent_name to display name
+          let targetAgent = '';
+          if (agentName === 'Finance_Agent') {
+            targetAgent = 'Finance Agent';
+          } else if (agentName === 'Sentiment_Agent') {
+            targetAgent = 'Sentiment Agent';
+          }
+          
+          if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+            setCurrentRuns(prev => 
+              prev.map(run => 
+                run.name === targetAgent 
+                  ? { ...run, tools: [...new Set([...run.tools, toolName])] }
+                  : run
+              )
+            );
+          }
+        }
+        
+        // Also check for tool events in other event types
+        if (data.payload?.tool_name && data.payload?.agent_name) {
+          const agentName = data.payload.agent_name;
+          const toolName = data.payload.tool_name;
+          
+          // Map agent_name to display name
+          let targetAgent = '';
+          if (agentName === 'Finance_Agent') {
+            targetAgent = 'Finance Agent';
+          } else if (agentName === 'Sentiment_Agent') {
+            targetAgent = 'Sentiment Agent';
+          }
+          
+          if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+            setCurrentRuns(prev => 
+              prev.map(run => 
+                run.name === targetAgent 
+                  ? { ...run, tools: [...new Set([...run.tools, toolName])] }
+                  : run
+              )
+            );
+          }
         }
       });
 
       eventSource.addEventListener('end', (event) => {
-        console.log('%cReceived END event. Final message:', 'color: red;', finalResult);
         setLoading(false);
+        
+        // Complete the conversation when end event is received
+        const finalAgentRuns = [...currentRuns];
+        const finalTeamRun = { 
+          content: 'Response completed', 
+          completed: true 
+        };
+        
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.type === 'ai-processing') {
+            return [...prev.slice(0, -1), {
+              ...lastMsg,
+              type: 'ai-response',
+              agentRuns: finalAgentRuns,
+              teamRun: finalTeamRun
+            }];
+          }
+          return prev;
+        });
+        
+        setCurrentRuns([]);
+        setCurrentRunIndex(-1);
+        setTeamRun({ content: '', completed: false });
+        
         eventSource.close();
       });
 
@@ -157,8 +579,190 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         <div className="max-w-4xl mx-auto space-y-4">
           {messages.map((msg, i) => {
             const isUser = msg.type === 'user'
-            const isAIResponse = msg.type === 'ai-response'
             const isError = msg.type === 'error'
+            const isProcessing = msg.type === 'ai-processing'
+            const isAiResponse = msg.type === 'ai-response'
+            
+            if (isProcessing && i === messages.length - 1) {
+              return (
+                <div key={i} className="flex justify-start">
+                  <div className="w-full max-w-[90%] space-y-3">
+
+                    {currentRuns.filter(run => run.tools.length > 0 || run.content).map((run, runIndex) => {
+                      const originalIndex = currentRuns.findIndex(r => r.name === run.name);
+                      return (
+                        <div key={originalIndex} className={`border rounded-lg transition-all duration-300 ease-out animate-in slide-in-from-top-2 fade-in ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
+                          <div 
+                            className={`p-3 cursor-pointer flex items-center justify-between ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-50'}`}
+                            onClick={() => setExpandedCards(prev => ({...prev, [`live-${originalIndex}`]: !prev[`live-${originalIndex}`]}))}
+                          >
+                            <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{run.name}</span>
+                            {expandedCards[`live-${originalIndex}`] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </div>
+                          {expandedCards[`live-${originalIndex}`] && (
+                            <div className={`px-3 pb-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'} space-y-3`}>
+                              {run.tools.length > 0 && (
+                                <div className="transition-all duration-200 ease-out">
+                                  <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Tools Used:</div>
+                                  <div className="space-y-1">
+                                    {run.tools.map((tool, toolIndex) => (
+                                      <div 
+                                        key={toolIndex} 
+                                        className={`text-sm px-2 py-1 rounded transition-all duration-200 ease-out cursor-pointer hover:scale-100 hover:shadow-md ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-700'}`}
+                                        onClick={() => {
+                                          const toolKey = `${tool}-${run.name === 'Finance Agent' ? 'Finance_Agent' : 'Sentiment_Agent'}`;
+                                          const toolData = toolEventData[toolKey] || {};
+                                          setSelectedTool({
+                                            name: tool,
+                                            agent: run.name,
+                                            ...toolData
+                                          });
+                                        }}
+                                      >
+                                        {tool}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {run.content && (
+                                <div className="transition-all duration-200 ease-out">
+                                  <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Agent Reasoning:</div>
+                                  <div className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                                    <ReactMarkdown
+                                      components={{
+                                        p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                                        ul: ({children}) => <ul className="list-disc list-inside mb-1 space-y-0.5">{children}</ul>,
+                                        ol: ({children}) => <ol className="list-decimal list-inside mb-1 space-y-0.5">{children}</ol>,
+                                        li: ({children}) => <li className="ml-2">{children}</li>,
+                                        strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                                      }}
+                                    >
+                                      {run.content}
+                                    </ReactMarkdown>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    
+                    {teamRunActive && teamRun.content && (
+                      <div className={`border rounded-lg transition-all duration-300 ease-out animate-in slide-in-from-top-2 fade-in ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
+                        <div className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Final Response (Conductor)</div>
+                        <div className={`px-3 pb-3 border-t ${darkMode ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-900'}`}>
+                          <div className="transition-all duration-200 ease-out">
+                            <ReactMarkdown
+                              components={{
+                                p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
+                                ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                                ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                                li: ({children}) => <li className="ml-2">{children}</li>,
+                                strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                              }}
+                            >
+                              {teamRun.content}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+            
+            if (isAiResponse && (msg.agentRuns || msg.teamRun)) {
+              return (
+                <div key={i} className="flex justify-start">
+                  <div className="w-full max-w-[90%] space-y-3">
+                    {msg.agentRuns?.map((run, runIndex) => (
+                      <div key={runIndex} className={`border rounded-lg ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
+                        <div 
+                          className={`p-3 cursor-pointer flex items-center justify-between ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-50'}`}
+                          onClick={() => setExpandedCards(prev => ({...prev, [`final-${i}-${runIndex}`]: !prev[`final-${i}-${runIndex}`]}))}
+                        >
+                          <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{run.name}</span>
+                          {expandedCards[`final-${i}-${runIndex}`] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </div>
+                        {expandedCards[`final-${i}-${runIndex}`] && (
+                          <div className={`px-3 pb-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'} space-y-3`}>
+                            {run.tools.length > 0 && (
+                              <div>
+                                <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Tools Used:</div>
+                                <div className="space-y-1">
+                                  {run.tools.map((tool, toolIndex) => (
+                                    <div 
+                                      key={toolIndex} 
+                                      className={`text-sm px-2 py-1 rounded transition-all duration-200 ease-out cursor-pointer hover:scale-101 hover:shadow-md ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-700'}`}
+                                      onClick={() => {
+                                        const agentName = run.name === 'Finance Agent' ? 'Finance_Agent' : 'Sentiment_Agent';
+                                        // Find the most recent tool data for this tool-agent combination
+                                        const matchingKeys = Object.keys(toolEventData).filter(key => 
+                                          key.startsWith(`${tool}-${agentName}-`)
+                                        );
+                                        const latestKey = matchingKeys.sort().pop();
+                                        const toolData = latestKey ? toolEventData[latestKey] : {};
+                                        setSelectedTool({
+                                          name: tool,
+                                          agent: run.name,
+                                          ...toolData
+                                        });
+                                      }}
+                                    >
+                                      {tool}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {run.content && (
+                              <div>
+                                <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Agent Reasoning:</div>
+                                <div className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                                  <ReactMarkdown
+                                    components={{
+                                      p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                                      ul: ({children}) => <ul className="list-disc list-inside mb-1 space-y-0.5">{children}</ul>,
+                                      ol: ({children}) => <ol className="list-decimal list-inside mb-1 space-y-0.5">{children}</ol>,
+                                      li: ({children}) => <li className="ml-2">{children}</li>,
+                                      strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                                    }}
+                                  >
+                                    {run.content}
+                                  </ReactMarkdown>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {msg.teamRun && (
+                      <div className={`border rounded-lg ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
+                        <div className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Final Response (Conductor)</div>
+                        <div className={`px-3 pb-3 border-t ${darkMode ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-900'}`}>
+                          <ReactMarkdown
+                            components={{
+                              p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
+                              ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                              ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                              li: ({children}) => <li className="ml-2">{children}</li>,
+                              strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                            }}
+                          >
+                            {msg.teamRun.content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            }
             
             return (
               <div key={i} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -174,92 +778,24 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                   }`}
                   style={isUser ? { backgroundColor: 'var(--primary)' } : {}}
                 >
-                  {isAIResponse && (
-                    <div className="space-y-3">
-                      {msg.tools && msg.tools.length > 0 && (
-                        <div className="border-b border-gray-300 pb-2">
-                          <div className="text-sm font-medium mb-2">Tools Used:</div>
-                          <div className="space-y-1">
-                            {msg.tools.map((tool, idx) => (
-                              <span 
-                                key={idx} 
-                                onClick={() => {
-                                  // Open right panel if closed
-                                  if (onToggleAgents) {
-                                    onToggleAgents();
-                                  }
-                                  if (onSearchResults) {
-                                    onSearchResults(msg.tools);
-                                  }
-                                  if (onWatcherClick) {
-                                    onWatcherClick();
-                                  }
-                                  // Set expanded tool in watcher
-                                  setTimeout(() => {
-                                    if (typeof window !== 'undefined') {
-                                      (window as any).expandWatcherTool = `${tool.name}-${idx}`;
-                                    }
-                                  }, 100);
-                                }}
-                                className={`block text-sm px-2 py-1 rounded cursor-pointer hover:opacity-80 hover:scale-103 transition-all duration-200 ease-out ${
-                                  darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200 text-gray-700'
-                                }`}>
-                                {tool.name}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {msg.content && (
-                        <div className={`prose prose-sm max-w-none ${
-                          darkMode ? 'prose-invert' : ''
-                        }`} style={{
-                          '--tw-prose-bullets': darkMode ? '#d1d5db' : '#374151',
-                          '--tw-prose-counters': darkMode ? '#d1d5db' : '#374151'
-                        } as React.CSSProperties}>
-                          <ReactMarkdown
-                            components={{
-                              p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-                              ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-                              ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                              li: ({children}) => <li className="ml-2">{children}</li>,
-                              strong: ({children}) => <strong className="font-semibold">{children}</strong>
-                            }}
-                          >
-                            {msg.content}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {!isAIResponse && (
-                    <div className={`prose prose-sm max-w-none ${
-                      darkMode ? 'prose-invert' : ''
-                    }`} style={{
-                      '--tw-prose-bullets': darkMode ? '#d1d5db' : '#374151',
-                      '--tw-prose-counters': darkMode ? '#d1d5db' : '#374151'
-                    } as React.CSSProperties}>
-                      <ReactMarkdown
-                        components={{
-                          p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-                          ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-                          ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                          li: ({children}) => <li className="ml-2">{children}</li>,
-                          strong: ({children}) => <strong className="font-semibold">{children}</strong>
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
-                  )}
+                  <ReactMarkdown
+                    components={{
+                      p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
+                      ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                      ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                      li: ({children}) => <li className="ml-2">{children}</li>,
+                      strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
                 </div>
               </div>
             )
           })}
-          {loading && (
+          {loading && messages.length > 0 && messages[messages.length - 1]?.type !== 'ai-response' && (
             <div className="flex justify-start">
-              <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900'
-                }`}>
+              <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900'}`}>
                 <span className="inline-flex">
                   {'Working...'.split('').map((char, i) => (
                     <span
@@ -290,12 +826,10 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                // Auto-resize textarea
                 if (textareaRef.current) {
                   textareaRef.current.style.height = 'auto';
                   const newHeight = Math.min(textareaRef.current.scrollHeight, 284);
                   textareaRef.current.style.height = `${newHeight}px`;
-                  // Scroll to bottom if content exceeds max height
                   if (textareaRef.current.scrollHeight > 284) {
                     textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
                   }
@@ -312,7 +846,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
               ref={textareaRef}
             />
             <button
-              className="absolute right-3 bottom-4.5 p-2 text-white rounded-lg disabled:opacity-50 transition-all duration-200 ease-out hover:opacity-90 hover:scale-110 active:scale-95"
+              className="absolute right-3 bottom-3 p-2 text-white rounded-lg disabled:opacity-50 transition-all duration-200 ease-out hover:opacity-90 hover:scale-110 active:scale-95"
               style={{ backgroundColor: 'var(--primary)' }}
               onClick={sendMessage}
               disabled={loading || !input.trim()}
@@ -321,12 +855,110 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             </button>
           </div>
 
-          <p className={`text-center text-xs mt-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}>
+          <p className={`text-center text-xs mt-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             AI agents can make mistakes. Consider checking important information.
           </p>
         </div>
       </div>
+      
+      {/* Tool Details Popup */}
+      {selectedTool && (
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50" onClick={() => setSelectedTool(null)}>
+          <div 
+            className={`w-[80%] h-[80%] overflow-y-auto rounded-xl shadow-2xl ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} border-2`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`flex items-center justify-between p-6 border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+              <h3 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tool Details</h3>
+              <button 
+                onClick={() => setSelectedTool(null)}
+                className={`p-2 rounded hover:bg-opacity-80 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+              >
+                <X size={24} className={darkMode ? 'text-gray-400' : 'text-gray-600'} />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-8 gap-6">
+                <div className="col-span-2">
+                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Name:</label>
+                  <p className={`mt-2 text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedTool.name}</p>
+                </div>
+                {selectedTool.duration && (
+                  <div className="col-span-1">
+                    <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Duration:</label>
+                    <p className={`mt-2 text-lg font-mono ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{selectedTool.duration.toFixed(4)}s</p>
+                  </div>
+                )}
+                {selectedTool.status && (
+                  <div className="col-span-1">
+                    <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Status:</label>
+                    <p className={`mt-2 text-lg font-semibold ${selectedTool.status === 'completed' ? (darkMode ? 'text-green-400' : 'text-green-600') : (darkMode ? 'text-yellow-400' : 'text-yellow-600')}`}>
+                      {selectedTool.status === 'completed' ? 'Completed' : 'Started'}
+                    </p>
+                  </div>
+                )}
+                {selectedTool.input && (
+                  <div className="col-span-4">
+                    <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Input:</label>
+                    <div className={`mt-2 p-2 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+                      {Object.entries(selectedTool.input).map(([key, value]) => (
+                        <div key={key} className="mb-1">
+                          <span className="font-medium">{key}:</span> {String(value)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {selectedTool.result && (
+                <div>
+                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Result:</label>
+                  <div className={`mt-2 p-4 rounded-lg max-h-[440px] overflow-y-auto ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+                    {(() => {
+                      try {
+                        const parsed = JSON.parse(selectedTool.result);
+                        if (Array.isArray(parsed) && (selectedTool.name.includes('search') || selectedTool.name.includes('news'))) {
+                          return (
+                            <div className="grid grid-cols-3 gap-4">
+                              {parsed.map((item, index) => (
+                                <div key={index} className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                  {item.title && (
+                                    <h4 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</h4>
+                                  )}
+                                  {item.body && (
+                                    <p className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.body}</p>
+                                  )}
+                                  {item.image && (
+                                    <img src={item.image} alt="Search result" className="w-full h-32 object-cover rounded mt-2" />
+                                  )}
+                                  {(item.url || item.href) && (
+                                    <a href={item.url || item.href} target="_blank" rel="noopener noreferrer" className={`text-sm underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                      View Source
+                                    </a>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }
+                        if (typeof parsed === 'object' && parsed !== null) {
+                          return Object.entries(parsed).map(([key, value]) => (
+                            <div key={key} className="mb-2">
+                              <span className="font-medium">{key}:</span> {String(value)}
+                            </div>
+                          ));
+                        }
+                      } catch {}
+                      return String(selectedTool.result);
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
