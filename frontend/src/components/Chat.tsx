@@ -30,6 +30,7 @@ interface AgentRun {
   completed: boolean
   currentRunId?: string
   toolDetails?: ToolDetails[]
+  toolCallIds: string[]
 }
 
 interface TeamRun {
@@ -102,14 +103,15 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('run', (event) => {
         const data = JSON.parse(event.data);
         console.log('🏃 RUN EVENT:', JSON.stringify(data, null, 2));
+        console.log('📊 Event Type:', data.event, '| Agent:', data.payload?.agent_name || 'Team');
         
         if (data.event === 'TeamRunStarted') {
           setTeamRunActive(true);
           setTeamRun({ content: '', completed: false });
           // Initialize agent cards but don't show them until they have content
           setCurrentRuns([
-            { name: 'Finance Agent', tools: [], content: '', completed: false },
-            { name: 'Sentiment Agent', tools: [], content: '', completed: false }
+            { name: 'Finance Agent', tools: [], content: '', completed: false, toolCallIds: [] },
+            { name: 'Sentiment Agent', tools: [], content: '', completed: false, toolCallIds: [] }
           ]);
         }
         
@@ -185,14 +187,16 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             data.payload.member_responses.slice(0, 2).forEach((response: any, index: number) => {
               const agentNames = ['Finance Agent', 'Sentiment Agent'];
               
-              // Extract tools from messages if available
+              // Extract tools and tool call IDs from messages if available
               let tools: string[] = [];
+              let toolCallIds: string[] = [];
               if (response.messages) {
                 response.messages.forEach((msg: any) => {
                   if (msg.tool_calls) {
                     msg.tool_calls.forEach((toolCall: any) => {
                       if (toolCall.function?.name && toolCall.function.name !== 'delegate_task_to_member' && toolCall.function.name !== 'update_user_memory') {
                         tools.push(toolCall.function.name);
+                        toolCallIds.push(toolCall.id);
                       }
                     });
                   }
@@ -202,13 +206,52 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
               // Fallback to response.tools if messages don't have tool_calls
               if (tools.length === 0 && response.tools) {
                 tools = response.tools.map((tool: any) => tool.tool_name).filter((tool: string) => tool !== 'delegate_task_to_member' && tool !== 'update_user_memory');
+                toolCallIds = response.tools.map((tool: any) => tool.tool_call_id || '').filter((id: string) => id !== '');
+              }
+              
+              let displayContent = response.content || '';
+              
+              // Parse JSON based on agent type
+              if (displayContent) {
+                try {
+                  // Extract all JSON objects from markdown code blocks
+                  if (displayContent.includes('```json')) {
+                    const jsonMatches = displayContent.match(/```json\s*\n([\s\S]*?)\n```/g);
+                    if (jsonMatches && jsonMatches.length > 0) {
+                      const parsedObjects = [];
+                      for (const match of jsonMatches) {
+                        const jsonContent = match.replace(/```json\s*\n/, '').replace(/\n```$/, '').trim();
+                        try {
+                          const parsed = JSON.parse(jsonContent);
+                          // Finance Agent has technical_analysis, Sentiment Agent has sentiment_summary
+                          if ((agentNames[index] === 'Finance Agent' && parsed.technical_analysis) || 
+                              (agentNames[index] === 'Sentiment Agent' && parsed.sentiment_summary)) {
+                            parsedObjects.push(parsed);
+                          }
+                        } catch {}
+                      }
+                      if (parsedObjects.length > 0) {
+                        displayContent = parsedObjects;
+                      }
+                    }
+                  } else {
+                    const jsonData = JSON.parse(displayContent);
+                    if ((agentNames[index] === 'Finance Agent' && jsonData.technical_analysis) || 
+                        (agentNames[index] === 'Sentiment Agent' && jsonData.sentiment_summary)) {
+                      displayContent = jsonData;
+                    }
+                  }
+                } catch {
+                  // If parsing fails, use original content
+                }
               }
               
               agentRuns.push({
                 name: agentNames[index] || `Agent ${index + 1}`,
                 tools: tools,
-                content: response.content || '',
-                completed: true
+                content: displayContent,
+                completed: true,
+                toolCallIds: toolCallIds
               });
             });
           }
@@ -274,87 +317,19 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           }));
         }
         
-        // Handle individual agent tool events
+        // Handle individual agent tool events - only for tool event data storage
         if (data.payload?.agent_name && data.payload?.tool?.tool_name) {
-          const agentName = data.payload.agent_name;
-          const toolName = data.payload.tool.tool_name;
-          
-          // Map agent_name to display name
-          let targetAgent = '';
-          if (agentName === 'Finance_Agent') {
-            targetAgent = 'Finance Agent';
-          } else if (agentName === 'Sentiment_Agent') {
-            targetAgent = 'Sentiment Agent';
-          }
-          
-          if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
-            setCurrentRuns(prev => 
-              prev.map(run => 
-                run.name === targetAgent 
-                  ? { ...run, tools: [...new Set([...run.tools, toolName])] }
-                  : run
-              )
-            );
-          }
+          // Don't add tools here - let the specific event listeners handle it
         }
       };
       
       eventSource.addEventListener('tool', (event) => {
         const data = JSON.parse(event.data);
         console.log('🔧 TOOL EVENT:', JSON.stringify(data, null, 2));
+        console.log('🛠️ Tool:', data.payload?.tool?.tool_name || data.payload?.tool_name, '| Status:', data.event);
         handleToolEvent(data);
         
-        // Handle any tool event that might contain agent tool info
-        if (data.event && data.event.includes('Tool') && data.payload) {
-          const agentName = data.payload.agent_name;
-          const toolName = data.payload.tool_name;
-          
-          if (agentName && toolName) {
-            // Map agent_name to display name
-            let targetAgent = '';
-            if (agentName === 'Finance_Agent') {
-              targetAgent = 'Finance Agent';
-            } else if (agentName === 'Sentiment_Agent') {
-              targetAgent = 'Sentiment Agent';
-            }
-            
-            if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
-              setCurrentRuns(prev => 
-                prev.map(run => 
-                  run.name === targetAgent 
-                    ? { ...run, tools: [...new Set([...run.tools, toolName])] }
-                    : run
-                )
-              );
-            }
-          }
-        }
-        
-        // Also handle tool events that might have different structure
-        if (data.event === 'ToolCallStarted' && data.payload?.tool_name) {
-          const toolName = data.payload.tool_name;
-          const agentName = data.payload?.agent_name;
-          
-          if (agentName) {
-            // Map agent_name to display name
-            let targetAgent = '';
-            if (agentName === 'Finance_Agent') {
-              targetAgent = 'Finance Agent';
-            } else if (agentName === 'Sentiment_Agent') {
-              targetAgent = 'Sentiment Agent';
-            }
-            
-            if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
-              setCurrentRuns(prev => 
-                prev.map(run => 
-                  run.name === targetAgent 
-                    ? { ...run, tools: [...new Set([...run.tools, toolName])] }
-                    : run
-                )
-              );
-            }
-          }
-        }
+
         
         if (data.event === 'TeamToolCallStarted') {
           const toolName = data.payload?.tool?.tool_name;
@@ -406,63 +381,56 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             }
             
             if (targetAgent) {
-              setCurrentRuns(prev => 
-                prev.map(run => 
-                  run.name === targetAgent 
-                    ? { ...run, content: result, completed: true }
-                    : run
-                )
-              );
-            }
-          }
-        }
-      });
-      
-      eventSource.addEventListener('tool-finance', (event) => {
-        const data = JSON.parse(event.data);
-        console.log('🔧 FINANCE TOOL EVENT:', JSON.stringify(data, null, 2));
-        handleToolEvent(data);
-      });
-      
-      eventSource.addEventListener('tool-sentiment', (event) => {
-        const data = JSON.parse(event.data);
-        console.log('🔧 SENTIMENT TOOL EVENT:', JSON.stringify(data, null, 2));
-        handleToolEvent(data);
-      });
-      
-      eventSource.addEventListener('content', (event) => {
-        const data = JSON.parse(event.data);
-        console.log('📝 CONTENT EVENT:', JSON.stringify(data, null, 2));
-        
-        if (data.event === 'TeamRunContent') {
-          if (data.payload?.content) {
-            setTeamRunActive(true);
-            setTeamRun(prev => ({
-              ...prev,
-              content: prev.content + data.payload.content
-            }));
-          }
-        }
-        
-        // Handle individual agent content events
-        if (data.event === 'RunContent' && data.payload?.agent_name) {
-          const content = data.payload?.content;
-          const agentName = data.payload?.agent_name;
-          
-          if (content && agentName) {
-            // Map agent_name to display name
-            let targetAgent = '';
-            if (agentName === 'Finance_Agent') {
-              targetAgent = 'Finance Agent';
-            } else if (agentName === 'Sentiment_Agent') {
-              targetAgent = 'Sentiment Agent';
-            }
-            
-            if (targetAgent) {
+              let displayContent = result;
+              
+              // Parse JSON for both agents
+              try {
+                // Extract all JSON objects from markdown code blocks
+                if (result.includes('```json')) {
+                  const jsonMatches = result.match(/```json\s*\n([\s\S]*?)\n```/g);
+                  if (jsonMatches && jsonMatches.length > 0) {
+                    const parsedObjects = [];
+                    for (const match of jsonMatches) {
+                      const jsonContent = match.replace(/```json\s*\n/, '').replace(/\n```$/, '').trim();
+                      try {
+                        const parsed = JSON.parse(jsonContent);
+                        if (parsed.sentiment_summary || parsed.technical_analysis) {
+                          parsedObjects.push(parsed);
+                        }
+                      } catch {}
+                    }
+                    if (parsedObjects.length > 0) {
+                      displayContent = parsedObjects;
+                    }
+                  }
+                } else {
+                  const jsonData = JSON.parse(result);
+                  if (jsonData.sentiment_summary || jsonData.technical_analysis) {
+                    displayContent = jsonData;
+                  }
+                }
+              } catch {
+                // If parsing fails, use original result
+              }
+              
               setCurrentRuns(prev => 
                 prev.map(run => {
-                  if (run.name === targetAgent && run.currentRunId === data.meta?.runId) {
-                    return { ...run, content: run.content + content };
+                  if (run.name === targetAgent) {
+                    let newContent;
+                    if (!run.content || run.content.toString().startsWith('Working on:')) {
+                      // First content or replacing "Working on" message
+                      newContent = displayContent;
+                    } else {
+                      // Append to existing content
+                      if (Array.isArray(run.content)) {
+                        newContent = Array.isArray(displayContent) ? [...run.content, ...displayContent] : [...run.content, displayContent];
+                      } else if (Array.isArray(displayContent)) {
+                        newContent = [run.content, ...displayContent];
+                      } else {
+                        newContent = [run.content, displayContent];
+                      }
+                    }
+                    return { ...run, content: newContent, completed: true };
                   }
                   return run;
                 })
@@ -472,86 +440,105 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         }
       });
       
-      eventSource.addEventListener('log', (event) => {
+      eventSource.addEventListener('tool-finance', (event) => {
         const data = JSON.parse(event.data);
-        console.log('📋 LOG EVENT:', JSON.stringify(data, null, 2));
+        console.log('🔧 FINANCE TOOL EVENT:', JSON.stringify(data, null, 2));
+        console.log('💰 Finance Tool:', data.payload?.tool?.tool_name, '| Duration:', data.payload?.tool?.metrics?.duration);
+        handleToolEvent(data);
         
-        // Check all possible tool event types
-        if (data.event && data.event.includes('Tool')) {
-          console.log('🔧 INDIVIDUAL TOOL EVENT FOUND:', data.event, data.payload);
-        }
-        
-        // Handle individual agent tool events
-        if (data.event === 'ToolCallStarted' && data.payload?.agent_name && data.payload?.tool_name) {
-          const agentName = data.payload.agent_name;
-          const toolName = data.payload.tool_name;
-          
-          // Map agent_name to display name
-          let targetAgent = '';
-          if (agentName === 'Finance_Agent') {
-            targetAgent = 'Finance Agent';
-          } else if (agentName === 'Sentiment_Agent') {
-            targetAgent = 'Sentiment Agent';
-          }
-          
-          if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+        // Track finance agent tools during live execution
+        if (data.event === 'ToolCallCompleted' && data.payload?.tool?.tool_name) {
+          const toolName = data.payload.tool.tool_name;
+          const toolCallId = data.payload.tool.tool_call_id;
+          if (toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
             setCurrentRuns(prev => 
               prev.map(run => 
-                run.name === targetAgent 
-                  ? { ...run, tools: [...new Set([...run.tools, toolName])] }
-                  : run
-              )
-            );
-          }
-        }
-        
-        // Also check for tool events in other event types
-        if (data.payload?.tool_name && data.payload?.agent_name) {
-          const agentName = data.payload.agent_name;
-          const toolName = data.payload.tool_name;
-          
-          // Map agent_name to display name
-          let targetAgent = '';
-          if (agentName === 'Finance_Agent') {
-            targetAgent = 'Finance Agent';
-          } else if (agentName === 'Sentiment_Agent') {
-            targetAgent = 'Sentiment Agent';
-          }
-          
-          if (targetAgent && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
-            setCurrentRuns(prev => 
-              prev.map(run => 
-                run.name === targetAgent 
-                  ? { ...run, tools: [...new Set([...run.tools, toolName])] }
+                run.name === 'Finance Agent' 
+                  ? { ...run, tools: [...run.tools, toolName], toolCallIds: [...run.toolCallIds, toolCallId] }
                   : run
               )
             );
           }
         }
       });
+      
+      eventSource.addEventListener('tool-sentiment', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('🔧 SENTIMENT TOOL EVENT:', JSON.stringify(data, null, 2));
+        console.log('😊 Sentiment Tool:', data.payload?.tool?.tool_name, '| Duration:', data.payload?.tool?.metrics?.duration);
+        handleToolEvent(data);
+        
+        // Track sentiment agent tools during live execution
+        if (data.event === 'ToolCallCompleted' && data.payload?.tool?.tool_name) {
+          const toolName = data.payload.tool.tool_name;
+          const toolCallId = data.payload.tool.tool_call_id;
+          if (toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory') {
+            setCurrentRuns(prev => 
+              prev.map(run => 
+                run.name === 'Sentiment Agent' 
+                  ? { ...run, tools: [...run.tools, toolName], toolCallIds: [...run.toolCallIds, toolCallId] }
+                  : run
+              )
+            );
+          }
+        }
+      });
+      
+      eventSource.addEventListener('content', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('📝 CONTENT EVENT:', JSON.stringify(data, null, 2));
+        console.log('📄 Content from:', data.payload?.agent_name || 'Team', '| Length:', data.payload?.content?.length);
+        
+        if (data.event === 'TeamRunContent') {
+          // Skip chunked content for team run - we'll get final content from TeamRunCompleted
+        }
+        
+        // Skip chunked content for live agent cards - only use TeamToolCallCompleted content
+      });
+      
+      eventSource.addEventListener('log', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('📋 LOG EVENT:', JSON.stringify(data, null, 2));
+        console.log('📝 Log Type:', data.event, '| Payload keys:', Object.keys(data.payload || {}));
+        
+        // Check all possible tool event types
+        if (data.event && data.event.includes('Tool')) {
+          console.log('🔧 INDIVIDUAL TOOL EVENT FOUND:', data.event, data.payload);
+        }
+        
+        // Don't track tools from log events - let specific event listeners handle it
+      });
 
       eventSource.addEventListener('end', (event) => {
+        console.log('🏁 END EVENT: Stream completed');
+        setLoading(false);
+        eventSource.close();
+      });
+      
+      eventSource.addEventListener('error', (event) => {
+        console.log('❌ ERROR EVENT:', event);
         setLoading(false);
         
-        // Complete the conversation when end event is received
-        const finalAgentRuns = [...currentRuns];
-        const finalTeamRun = { 
-          content: 'Response completed', 
-          completed: true 
-        };
+        let errorMessage = 'An error occurred while processing your request.';
         
-        setMessages(prev => {
-          const lastMsg = prev[prev.length - 1];
-          if (lastMsg && lastMsg.type === 'ai-processing') {
-            return [...prev.slice(0, -1), {
-              ...lastMsg,
-              type: 'ai-response',
-              agentRuns: finalAgentRuns,
-              teamRun: finalTeamRun
-            }];
+        // Try to parse error data if available
+        if (event.data) {
+          try {
+            const errorData = JSON.parse(event.data);
+            if (errorData.error) {
+              if (errorData.error.includes('429') || errorData.error.includes('quota')) {
+                errorMessage = 'API quota exceeded. Please wait a moment and try again.';
+              } else {
+                errorMessage = `Error: ${errorData.error}`;
+              }
+            }
+          } catch {
+            // If parsing fails, use default message
           }
-          return prev;
-        });
+        }
+        
+        // Keep current messages and just add error card
+        setMessages(prev => [...prev, {type: 'error', content: errorMessage}]);
         
         setCurrentRuns([]);
         setCurrentRunIndex(-1);
@@ -561,8 +548,20 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       });
 
       eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        setMessages(prev => [...prev, {type: 'error', content: 'Unable to connect with the server...'}]);
+        console.error('❌ EventSource connection error:', error);
+        console.log('🔌 Connection state:', eventSource.readyState);
+        
+        // Only show connection error if we haven't already handled an error event
+        if (eventSource.readyState === EventSource.CLOSED) {
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.type !== 'error') {
+              return [...prev, {type: 'error', content: 'Connection lost. Please try again.'}];
+            }
+            return prev;
+          });
+        }
+        
         setLoading(false);
         eventSource.close();
       };
@@ -610,7 +609,9 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                         key={toolIndex} 
                                         className={`text-sm px-2 py-1 rounded transition-all duration-200 ease-out cursor-pointer hover:scale-100 hover:shadow-md ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-700'}`}
                                         onClick={() => {
-                                          const toolKey = `${tool}-${run.name === 'Finance Agent' ? 'Finance_Agent' : 'Sentiment_Agent'}`;
+                                          const agentName = run.name === 'Finance Agent' ? 'Finance_Agent' : 'Sentiment_Agent';
+                                          const toolCallId = run.toolCallIds[toolIndex];
+                                          const toolKey = `${tool}-${agentName}-${toolCallId}`;
                                           const toolData = toolEventData[toolKey] || {};
                                           setSelectedTool({
                                             name: tool,
@@ -629,17 +630,96 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                 <div className="transition-all duration-200 ease-out">
                                   <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Agent Reasoning:</div>
                                   <div className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                                    <ReactMarkdown
-                                      components={{
-                                        p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
-                                        ul: ({children}) => <ul className="list-disc list-inside mb-1 space-y-0.5">{children}</ul>,
-                                        ol: ({children}) => <ol className="list-decimal list-inside mb-1 space-y-0.5">{children}</ol>,
-                                        li: ({children}) => <li className="ml-2">{children}</li>,
-                                        strong: ({children}) => <strong className="font-semibold">{children}</strong>
-                                      }}
-                                    >
-                                      {run.content}
-                                    </ReactMarkdown>
+                                    {typeof run.content === 'object' && (Array.isArray(run.content) || run.content.technical_analysis || run.content.sentiment_summary) ? (
+                                      <div className="space-y-4">
+                                        {(Array.isArray(run.content) ? run.content : [run.content]).map((item: any, itemIdx: number) => (
+                                          <div key={itemIdx} className={`space-y-3 ${itemIdx > 0 ? 'pt-4 border-t border-gray-300' : ''}`}>
+                                            {item.ticker && (
+                                              <div className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ticker: {item.ticker}</div>
+                                            )}
+                                            {item.technical_analysis && (
+                                              <div className="grid gap-2">
+                                                {item.technical_analysis.map((indicator: any, idx: number) => (
+                                                  <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                      <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
+                                                      <span className={`text-xs px-2 py-1 rounded ${
+                                                        indicator.signal === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                                        indicator.signal === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                        'bg-gray-100 text-gray-800'
+                                                      }`}>{indicator.signal}</span>
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{indicator.justification}</div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {item.sentiment_summary && (
+                                              <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                <div className="flex justify-between items-center mb-1">
+                                                  <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sentiment Summary</span>
+                                                  <span className={`text-xs px-2 py-1 rounded ${
+                                                    item.sentiment_summary.overall_sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
+                                                    item.sentiment_summary.overall_sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
+                                                    'bg-gray-100 text-gray-800'
+                                                  }`}>{item.sentiment_summary.overall_sentiment}</span>
+                                                </div>
+                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.sentiment_summary.justification}</div>
+                                              </div>
+                                            )}
+                                            {item.tool_outputs && (
+                                              <div className="grid gap-2">
+                                                {item.tool_outputs.map((tool: any, idx: number) => (
+                                                  <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                      <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{tool.tool_name}</span>
+                                                      <span className={`text-xs px-2 py-1 rounded ${
+                                                        tool.sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
+                                                        tool.sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
+                                                        'bg-gray-100 text-gray-800'
+                                                      }`}>{tool.sentiment}</span>
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>{tool.justification}</div>
+                                                    {tool.top_points && (
+                                                      <ul className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} list-disc list-inside space-y-0.5`}>
+                                                        {tool.top_points.slice(0, 3).map((point: string, pointIdx: number) => (
+                                                          <li key={pointIdx}>{point}</li>
+                                                        ))}
+                                                      </ul>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {item.summary && (
+                                              <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                <div className="flex justify-between items-center mb-1">
+                                                  <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</span>
+                                                  <span className={`text-xs px-2 py-1 rounded ${
+                                                    item.summary.consolidated_signal === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                                    item.summary.consolidated_signal === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                    'bg-gray-100 text-gray-800'
+                                                  }`}>{item.summary.consolidated_signal}</span>
+                                                </div>
+                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.summary.report}</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <ReactMarkdown
+                                        components={{
+                                          p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                                          ul: ({children}) => <ul className="list-disc list-inside mb-1 space-y-0.5">{children}</ul>,
+                                          ol: ({children}) => <ol className="list-decimal list-inside mb-1 space-y-0.5">{children}</ol>,
+                                          li: ({children}) => <li className="ml-2">{children}</li>,
+                                          strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                                        }}
+                                      >
+                                        {typeof run.content === 'string' ? run.content : JSON.stringify(run.content, null, 2)}
+                                      </ReactMarkdown>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -699,12 +779,9 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                       className={`text-sm px-2 py-1 rounded transition-all duration-200 ease-out cursor-pointer hover:scale-101 hover:shadow-md ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-700'}`}
                                       onClick={() => {
                                         const agentName = run.name === 'Finance Agent' ? 'Finance_Agent' : 'Sentiment_Agent';
-                                        // Find the most recent tool data for this tool-agent combination
-                                        const matchingKeys = Object.keys(toolEventData).filter(key => 
-                                          key.startsWith(`${tool}-${agentName}-`)
-                                        );
-                                        const latestKey = matchingKeys.sort().pop();
-                                        const toolData = latestKey ? toolEventData[latestKey] : {};
+                                        const toolCallId = run.toolCallIds?.[toolIndex];
+                                        const toolKey = toolCallId ? `${tool}-${agentName}-${toolCallId}` : `${tool}-${agentName}`;
+                                        const toolData = toolEventData[toolKey] || {};
                                         setSelectedTool({
                                           name: tool,
                                           agent: run.name,
@@ -722,17 +799,72 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                               <div>
                                 <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Agent Reasoning:</div>
                                 <div className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                                  <ReactMarkdown
-                                    components={{
-                                      p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
-                                      ul: ({children}) => <ul className="list-disc list-inside mb-1 space-y-0.5">{children}</ul>,
-                                      ol: ({children}) => <ol className="list-decimal list-inside mb-1 space-y-0.5">{children}</ol>,
-                                      li: ({children}) => <li className="ml-2">{children}</li>,
-                                      strong: ({children}) => <strong className="font-semibold">{children}</strong>
-                                    }}
-                                  >
-                                    {run.content}
-                                  </ReactMarkdown>
+                                  {typeof run.content === 'object' && (Array.isArray(run.content) || run.content.technical_analysis || run.content.sentiment_summary) ? (
+                                    <div className="space-y-4">
+                                      {(Array.isArray(run.content) ? run.content : [run.content]).map((item: any, itemIdx: number) => (
+                                        <div key={itemIdx} className={`space-y-3 ${itemIdx > 0 ? 'pt-4 border-t border-gray-300' : ''}`}>
+                                          {item.ticker && (
+                                            <div className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ticker: {item.ticker}</div>
+                                          )}
+                                          {item.technical_analysis && (
+                                            <div className="grid gap-2">
+                                              {item.technical_analysis.map((indicator: any, idx: number) => (
+                                                <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                  <div className="flex justify-between items-center mb-1">
+                                                    <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
+                                                    <span className={`text-xs px-2 py-1 rounded ${
+                                                      indicator.signal === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                                      indicator.signal === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                      'bg-gray-100 text-gray-800'
+                                                    }`}>{indicator.signal}</span>
+                                                  </div>
+                                                  <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{indicator.justification}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {item.sentiment_summary && (
+                                            <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                              <div className="flex justify-between items-center mb-1">
+                                                <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sentiment Summary</span>
+                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                  item.sentiment_summary.overall_sentiment === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                                  item.sentiment_summary.overall_sentiment === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                  'bg-gray-100 text-gray-800'
+                                                }`}>{item.sentiment_summary.overall_sentiment}</span>
+                                              </div>
+                                              <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.sentiment_summary.justification}</div>
+                                            </div>
+                                          )}
+                                          {item.summary && (
+                                            <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                              <div className="flex justify-between items-center mb-1">
+                                                <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</span>
+                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                  item.summary.consolidated_signal === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                                  item.summary.consolidated_signal === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                  'bg-gray-100 text-gray-800'
+                                                }`}>{item.summary.consolidated_signal}</span>
+                                              </div>
+                                              <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.summary.report}</div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <ReactMarkdown
+                                      components={{
+                                        p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                                        ul: ({children}) => <ul className="list-disc list-inside mb-1 space-y-0.5">{children}</ul>,
+                                        ol: ({children}) => <ol className="list-decimal list-inside mb-1 space-y-0.5">{children}</ol>,
+                                        li: ({children}) => <li className="ml-2">{children}</li>,
+                                        strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                                      }}
+                                    >
+                                      {typeof run.content === 'string' ? run.content : JSON.stringify(run.content, null, 2)}
+                                    </ReactMarkdown>
+                                  )}
                                 </div>
                               </div>
                             )}
