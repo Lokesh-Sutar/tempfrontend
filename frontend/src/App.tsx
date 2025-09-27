@@ -74,7 +74,7 @@ function AppContent() {
       />
       
       <div className="flex-1 flex overflow-hidden">
-        <ResizablePanel
+        {/* <ResizablePanel
           side="left"
           minWidth={200}
           maxWidth={400}
@@ -83,7 +83,7 @@ function AppContent() {
           darkMode={isDark}
         >
           <LeftSidebar darkMode={isDark} show={showSidebar} />
-        </ResizablePanel>
+        </ResizablePanel> */}
         
         <Chat 
           darkMode={isDark} 
@@ -98,7 +98,7 @@ function AppContent() {
           }}
         />
         
-        <ResizablePanel
+        {/* <ResizablePanel
           side="right"
           minWidth={300}
           maxWidth={600}
@@ -114,7 +114,7 @@ function AppContent() {
             onAgentClick={handleAgentClick}
             searchResults={searchResults}
           />
-        </ResizablePanel>
+        </ResizablePanel> */}
       </div>
     </div>
   )

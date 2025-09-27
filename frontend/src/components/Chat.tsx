@@ -52,6 +52,62 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const renderBulletPoints = (data: any, depth: number = 0): JSX.Element[] => {
+    const items: JSX.Element[] = [];
+    const indent = depth * 10;
+    
+    if (Array.isArray(data)) {
+      data.forEach((item, index) => {
+        if (typeof item === 'object' && item !== null) {
+          items.push(
+            <li key={index} style={{ marginLeft: `${depth}px` }} className={`mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+              <span className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>Item {index + 1}:</span>
+              <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                {renderBulletPoints(item, depth + 1)}
+              </ul>
+            </li>
+          );
+        } else {
+          items.push(
+            <li key={index} style={{ marginLeft: `${depth}px` }} className={`${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+              {String(item)}
+            </li>
+          );
+        }
+      });
+    } else if (typeof data === 'object' && data !== null) {
+      Object.entries(data).forEach(([key, value]) => {
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          items.push(
+            <li key={key} style={{ marginLeft: `${depth}px` }} className={`mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+              <span className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{key}:</span>
+              <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                {renderBulletPoints(value, depth + 1)}
+              </ul>
+            </li>
+          );
+        } else if (Array.isArray(value)) {
+          items.push(
+            <li key={key} style={{ marginLeft: `${depth}px` }} className={`mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+              <span className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{key}:</span>
+              <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                {renderBulletPoints(value, depth + 1)}
+              </ul>
+            </li>
+          );
+        } else {
+          items.push(
+            <li key={key} style={{ marginLeft: `${depth}px` }} className={`${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+              <span className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{key}:</span> {String(value)}
+            </li>
+          );
+        }
+      });
+    }
+    
+    return items;
+  };
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && selectedTool) {
@@ -103,7 +159,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('run', (event) => {
         const data = JSON.parse(event.data);
         console.log('🏃 RUN EVENT:', JSON.stringify(data, null, 2));
-        console.log('📊 Event Type:', data.event, '| Agent:', data.payload?.agent_name || 'Team');
+        // console.log('📊 Event Type:', data.event, '| Agent:', data.payload?.agent_name || 'Team');
         
         if (data.event === 'TeamRunStarted') {
           setTeamRunActive(true);
@@ -326,7 +382,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('tool', (event) => {
         const data = JSON.parse(event.data);
         console.log('🔧 TOOL EVENT:', JSON.stringify(data, null, 2));
-        console.log('🛠️ Tool:', data.payload?.tool?.tool_name || data.payload?.tool_name, '| Status:', data.event);
+        // console.log('🛠️ Tool:', data.payload?.tool?.tool_name || data.payload?.tool_name, '| Status:', data.event);
         handleToolEvent(data);
         
 
@@ -443,7 +499,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('tool-finance', (event) => {
         const data = JSON.parse(event.data);
         console.log('🔧 FINANCE TOOL EVENT:', JSON.stringify(data, null, 2));
-        console.log('💰 Finance Tool:', data.payload?.tool?.tool_name, '| Duration:', data.payload?.tool?.metrics?.duration);
+        // console.log('💰 Finance Tool:', data.payload?.tool?.tool_name, '| Duration:', data.payload?.tool?.metrics?.duration);
         handleToolEvent(data);
         
         // Track finance agent tools during live execution
@@ -465,7 +521,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('tool-sentiment', (event) => {
         const data = JSON.parse(event.data);
         console.log('🔧 SENTIMENT TOOL EVENT:', JSON.stringify(data, null, 2));
-        console.log('😊 Sentiment Tool:', data.payload?.tool?.tool_name, '| Duration:', data.payload?.tool?.metrics?.duration);
+        // console.log('😊 Sentiment Tool:', data.payload?.tool?.tool_name, '| Duration:', data.payload?.tool?.metrics?.duration);
         handleToolEvent(data);
         
         // Track sentiment agent tools during live execution
@@ -487,7 +543,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('content', (event) => {
         const data = JSON.parse(event.data);
         console.log('📝 CONTENT EVENT:', JSON.stringify(data, null, 2));
-        console.log('📄 Content from:', data.payload?.agent_name || 'Team', '| Length:', data.payload?.content?.length);
+        // console.log('📄 Content from:', data.payload?.agent_name || 'Team', '| Length:', data.payload?.content?.length);
         
         if (data.event === 'TeamRunContent') {
           // Skip chunked content for team run - we'll get final content from TeamRunCompleted
@@ -499,7 +555,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       eventSource.addEventListener('log', (event) => {
         const data = JSON.parse(event.data);
         console.log('📋 LOG EVENT:', JSON.stringify(data, null, 2));
-        console.log('📝 Log Type:', data.event, '| Payload keys:', Object.keys(data.payload || {}));
+        // console.log('📝 Log Type:', data.event, '| Payload keys:', Object.keys(data.payload || {}));
         
         // Check all possible tool event types
         if (data.event && data.event.includes('Tool')) {
@@ -537,12 +593,38 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           }
         }
         
-        // Keep current messages and just add error card
-        setMessages(prev => [...prev, {type: 'error', content: errorMessage}]);
+        // Convert current processing message to final response with current progress
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.type === 'ai-processing') {
+            // Convert current runs to agent runs format
+            const agentRuns: AgentRun[] = currentRuns.filter(run => run.tools.length > 0 || run.content).map(run => ({
+              name: run.name,
+              tools: run.tools,
+              content: run.content,
+              completed: run.completed,
+              toolCallIds: run.toolCallIds
+            }));
+            
+            return [
+              ...prev.slice(0, -1), 
+              {
+                ...lastMsg,
+                type: 'ai-response',
+                agentRuns: agentRuns.length > 0 ? agentRuns : undefined,
+                teamRun: teamRun.content ? teamRun : undefined
+              },
+              {type: 'error', content: errorMessage}
+            ];
+          }
+          return [...prev, {type: 'error', content: errorMessage}];
+        });
         
+        // Clear live state but keep the progress in messages
         setCurrentRuns([]);
         setCurrentRunIndex(-1);
         setTeamRun({ content: '', completed: false });
+        setTeamRunActive(false);
         
         eventSource.close();
       });
@@ -556,18 +638,75 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           setMessages(prev => {
             const lastMsg = prev[prev.length - 1];
             if (lastMsg && lastMsg.type !== 'error') {
+              // Convert current processing message to final response with current progress
+              if (lastMsg.type === 'ai-processing') {
+                const agentRuns: AgentRun[] = currentRuns.filter(run => run.tools.length > 0 || run.content).map(run => ({
+                  name: run.name,
+                  tools: run.tools,
+                  content: run.content,
+                  completed: run.completed,
+                  toolCallIds: run.toolCallIds
+                }));
+                
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    ...lastMsg,
+                    type: 'ai-response',
+                    agentRuns: agentRuns.length > 0 ? agentRuns : undefined,
+                    teamRun: teamRun.content ? teamRun : undefined
+                  },
+                  {type: 'error', content: 'Connection lost. Please try again.'}
+                ];
+              }
               return [...prev, {type: 'error', content: 'Connection lost. Please try again.'}];
             }
             return prev;
           });
         }
         
+        // Clear live state
+        setCurrentRuns([]);
+        setCurrentRunIndex(-1);
+        setTeamRun({ content: '', completed: false });
+        setTeamRunActive(false);
         setLoading(false);
         eventSource.close();
       };
     } catch (error) {
       console.error('Failed to create EventSource:', error);
-      setMessages(prev => [...prev, {type: 'error', content: 'Could not initiate connection.'}]);
+      
+      // Convert current processing message to final response with current progress
+      setMessages(prev => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg && lastMsg.type === 'ai-processing') {
+          const agentRuns: AgentRun[] = currentRuns.filter(run => run.tools.length > 0 || run.content).map(run => ({
+            name: run.name,
+            tools: run.tools,
+            content: run.content,
+            completed: run.completed,
+            toolCallIds: run.toolCallIds
+          }));
+          
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...lastMsg,
+              type: 'ai-response',
+              agentRuns: agentRuns.length > 0 ? agentRuns : undefined,
+              teamRun: teamRun.content ? teamRun : undefined
+            },
+            {type: 'error', content: 'Could not initiate connection.'}
+          ];
+        }
+        return [...prev, {type: 'error', content: 'Could not initiate connection.'}];
+      });
+      
+      // Clear live state
+      setCurrentRuns([]);
+      setCurrentRunIndex(-1);
+      setTeamRun({ content: '', completed: false });
+      setTeamRunActive(false);
       setLoading(false);
     }
   };
@@ -635,21 +774,21 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                         {(Array.isArray(run.content) ? run.content : [run.content]).map((item: any, itemIdx: number) => (
                                           <div key={itemIdx} className={`space-y-3 ${itemIdx > 0 ? 'pt-4 border-t border-gray-300' : ''}`}>
                                             {item.ticker && (
-                                              <div className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ticker: {item.ticker}</div>
+                                              <div className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ticker: {item.ticker}</div>
                                             )}
                                             {item.technical_analysis && (
                                               <div className="grid gap-2">
                                                 {item.technical_analysis.map((indicator: any, idx: number) => (
                                                   <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                                     <div className="flex justify-between items-center mb-1">
-                                                      <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
-                                                      <span className={`text-xs px-2 py-1 rounded ${
+                                                      <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
+                                                      <span className={`text-sm px-2 py-1 rounded ${
                                                         indicator.signal === 'Bullish' ? 'bg-green-100 text-green-800' :
                                                         indicator.signal === 'Bearish' ? 'bg-red-100 text-red-800' :
                                                         'bg-gray-100 text-gray-800'
                                                       }`}>{indicator.signal}</span>
                                                     </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{indicator.justification}</div>
+                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{indicator.justification}</div>
                                                   </div>
                                                 ))}
                                               </div>
@@ -657,8 +796,8 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                             {item.sentiment_summary && (
                                               <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                                 <div className="flex justify-between items-center mb-1">
-                                                  <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sentiment Summary</span>
-                                                  <span className={`text-xs px-2 py-1 rounded ${
+                                                  <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sentiment Summary</span>
+                                                  <span className={`text-sm px-2 py-1 rounded ${
                                                     item.sentiment_summary.overall_sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
                                                     item.sentiment_summary.overall_sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
                                                     'bg-gray-100 text-gray-800'
@@ -672,17 +811,17 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                                 {item.tool_outputs.map((tool: any, idx: number) => (
                                                   <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                                     <div className="flex justify-between items-center mb-1">
-                                                      <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{tool.tool_name}</span>
-                                                      <span className={`text-xs px-2 py-1 rounded ${
+                                                      <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{tool.tool_name}</span>
+                                                      <span className={`text-sm px-2 py-1 rounded ${
                                                         tool.sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
                                                         tool.sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
                                                         'bg-gray-100 text-gray-800'
                                                       }`}>{tool.sentiment}</span>
                                                     </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>{tool.justification}</div>
+                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>{tool.justification}</div>
                                                     {tool.top_points && (
-                                                      <ul className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} list-disc list-inside space-y-0.5`}>
-                                                        {tool.top_points.slice(0, 3).map((point: string, pointIdx: number) => (
+                                                      <ul className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'} list-disc list-inside space-y-0.5`}>
+                                                        {tool.top_points.map((point: string, pointIdx: number) => (
                                                           <li key={pointIdx}>{point}</li>
                                                         ))}
                                                       </ul>
@@ -691,17 +830,27 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                                 ))}
                                               </div>
                                             )}
+                                            {item.key_points && (
+                                              <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                <div className={`font-medium text-sm mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Key Points</div>
+                                                <ul className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} list-disc list-inside space-y-0.5`}>
+                                                  {item.key_points.map((point: string, pointIdx: number) => (
+                                                    <li key={pointIdx}>{point}</li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
                                             {item.summary && (
                                               <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                                 <div className="flex justify-between items-center mb-1">
-                                                  <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</span>
-                                                  <span className={`text-xs px-2 py-1 rounded ${
+                                                  <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</span>
+                                                  <span className={`text-sm px-2 py-1 rounded ${
                                                     item.summary.consolidated_signal === 'Bullish' ? 'bg-green-100 text-green-800' :
                                                     item.summary.consolidated_signal === 'Bearish' ? 'bg-red-100 text-red-800' :
                                                     'bg-gray-100 text-gray-800'
                                                   }`}>{item.summary.consolidated_signal}</span>
                                                 </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.summary.report}</div>
+                                                <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.summary.report}</div>
                                               </div>
                                             )}
                                           </div>
@@ -731,7 +880,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                     
                     {teamRunActive && teamRun.content && (
                       <div className={`border rounded-lg transition-all duration-300 ease-out animate-in slide-in-from-top-2 fade-in ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
-                        <div className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Final Response (Conductor)</div>
+                        <div className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Conductor</div>
                         <div className={`px-3 pb-3 border-t ${darkMode ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-900'}`}>
                           <div className="transition-all duration-200 ease-out">
                             <ReactMarkdown
@@ -804,15 +953,15 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                       {(Array.isArray(run.content) ? run.content : [run.content]).map((item: any, itemIdx: number) => (
                                         <div key={itemIdx} className={`space-y-3 ${itemIdx > 0 ? 'pt-4 border-t border-gray-300' : ''}`}>
                                           {item.ticker && (
-                                            <div className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ticker: {item.ticker}</div>
+                                            <div className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Ticker: {item.ticker}</div>
                                           )}
                                           {item.technical_analysis && (
                                             <div className="grid gap-2">
                                               {item.technical_analysis.map((indicator: any, idx: number) => (
                                                 <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                                   <div className="flex justify-between items-center mb-1">
-                                                    <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
-                                                    <span className={`text-xs px-2 py-1 rounded ${
+                                                    <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
+                                                    <span className={`text-sm px-2 py-1 rounded ${
                                                       indicator.signal === 'Bullish' ? 'bg-green-100 text-green-800' :
                                                       indicator.signal === 'Bearish' ? 'bg-red-100 text-red-800' :
                                                       'bg-gray-100 text-gray-800'
@@ -826,21 +975,55 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                           {item.sentiment_summary && (
                                             <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                               <div className="flex justify-between items-center mb-1">
-                                                <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sentiment Summary</span>
-                                                <span className={`text-xs px-2 py-1 rounded ${
-                                                  item.sentiment_summary.overall_sentiment === 'Bullish' ? 'bg-green-100 text-green-800' :
-                                                  item.sentiment_summary.overall_sentiment === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sentiment Summary</span>
+                                                <span className={`text-sm px-2 py-1 rounded ${
+                                                  item.sentiment_summary.overall_sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
+                                                  item.sentiment_summary.overall_sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
                                                   'bg-gray-100 text-gray-800'
                                                 }`}>{item.sentiment_summary.overall_sentiment}</span>
                                               </div>
                                               <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.sentiment_summary.justification}</div>
                                             </div>
                                           )}
+                                          {item.tool_outputs && (
+                                            <div className="grid gap-2">
+                                              {item.tool_outputs.map((tool: any, idx: number) => (
+                                                <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                                  <div className="flex justify-between items-center mb-1">
+                                                    <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{tool.tool_name}</span>
+                                                    <span className={`text-sm px-2 py-1 rounded ${
+                                                      tool.sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
+                                                      tool.sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
+                                                      'bg-gray-100 text-gray-800'
+                                                    }`}>{tool.sentiment}</span>
+                                                  </div>
+                                                  <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-1`}>{tool.justification}</div>
+                                                  {tool.top_points && (
+                                                    <ul className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} list-disc list-inside space-y-0.5`}>
+                                                      {tool.top_points.map((point: string, pointIdx: number) => (
+                                                        <li key={pointIdx}>{point}</li>
+                                                      ))}
+                                                    </ul>
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {item.key_points && (
+                                            <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                              <div className={`font-medium text-sm mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Key Points</div>
+                                              <ul className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'} list-disc list-inside space-y-0.5`}>
+                                                {item.key_points.map((point: string, pointIdx: number) => (
+                                                  <li key={pointIdx}>{point}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
                                           {item.summary && (
                                             <div className={`p-2 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                                               <div className="flex justify-between items-center mb-1">
-                                                <span className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</span>
-                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</span>
+                                                <span className={`text-sm px-2 py-1 rounded ${
                                                   item.summary.consolidated_signal === 'Bullish' ? 'bg-green-100 text-green-800' :
                                                   item.summary.consolidated_signal === 'Bearish' ? 'bg-red-100 text-red-800' :
                                                   'bg-gray-100 text-gray-800'
@@ -876,18 +1059,121 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                     {msg.teamRun && (
                       <div className={`border rounded-lg ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
                         <div className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Final Response (Conductor)</div>
-                        <div className={`px-3 pb-3 border-t ${darkMode ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-900'}`}>
-                          <ReactMarkdown
-                            components={{
-                              p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-                              ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-                              ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                              li: ({children}) => <li className="ml-2">{children}</li>,
-                              strong: ({children}) => <strong className="font-semibold">{children}</strong>
-                            }}
-                          >
-                            {msg.teamRun.content}
-                          </ReactMarkdown>
+                        <div className={`px-3 py-3 border-t ${darkMode ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-900'}`}>
+                          {(() => {
+                            try {
+                              // Extract JSON from markdown code block
+                              const jsonMatch = msg.teamRun.content.match(/```json\s*\n([\s\S]*?)\n```/);
+                              if (jsonMatch) {
+                                const parsed = JSON.parse(jsonMatch[1]);
+                                return (
+                                  <div className="space-y-4">
+                                    {/* Executive Summary */}
+                                    {parsed.executive_summary && (
+                                      <div className={`p-3 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                        <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{parsed.executive_summary.heading}</h3>
+                                        <div className="flex items-center gap-4 mb-2">
+                                          <span className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>Ticker: {parsed.executive_summary.ticker}</span>
+                                          <span className={`px-2 py-1 rounded text-sm ${
+                                            parsed.executive_summary.recommendation === 'Buy' ? 'bg-green-100 text-green-800' :
+                                            parsed.executive_summary.recommendation === 'Sell' ? 'bg-red-100 text-red-800' :
+                                            'bg-yellow-100 text-yellow-800'
+                                          }`}>{parsed.executive_summary.recommendation}</span>
+                                        </div>
+                                        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{parsed.executive_summary.thesis}</p>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Technical Analysis */}
+                                    {parsed.technical_analysis && (
+                                      <div className={`p-3 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                        <div className="flex justify-between items-center mb-3">
+                                          <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{parsed.technical_analysis.heading}</h3>
+                                          <span className={`px-2 py-1 rounded text-sm ${
+                                            parsed.technical_analysis.consolidated_signal === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                            parsed.technical_analysis.consolidated_signal === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                            'bg-gray-100 text-gray-800'
+                                          }`}>{parsed.technical_analysis.consolidated_signal}</span>
+                                        </div>
+                                        <div className="grid gap-2">
+                                          {parsed.technical_analysis.key_indicators?.map((indicator, idx) => (
+                                            <div key={idx} className={`p-2 rounded border ${darkMode ? 'bg-gray-700 border-gray-500' : 'bg-white border-gray-300'}`}>
+                                              <div className="flex justify-between items-center mb-1">
+                                                <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{indicator.indicator_name}</span>
+                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                  indicator.signal === 'Bullish' ? 'bg-green-100 text-green-800' :
+                                                  indicator.signal === 'Bearish' ? 'bg-red-100 text-red-800' :
+                                                  'bg-gray-100 text-gray-800'
+                                                }`}>{indicator.signal}</span>
+                                              </div>
+                                              <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{indicator.justification}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Market Sentiment Analysis */}
+                                    {parsed.market_sentiment_analysis && (
+                                      <div className={`p-3 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                        <div className="flex justify-between items-center mb-3">
+                                          <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{parsed.market_sentiment_analysis.heading}</h3>
+                                          <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-1 rounded text-sm ${
+                                              parsed.market_sentiment_analysis.overall_sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
+                                              parsed.market_sentiment_analysis.overall_sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
+                                              'bg-yellow-100 text-yellow-800'
+                                            }`}>{parsed.market_sentiment_analysis.overall_sentiment}</span>
+                                            <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Confidence: {parsed.market_sentiment_analysis.confidence_score}%</span>
+                                          </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                          {parsed.market_sentiment_analysis.key_drivers?.map((driver, idx) => (
+                                            <div key={idx} className={`text-sm p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                              • {driver}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Recommendation */}
+                                    {parsed.integrated_thesis_and_recommendation && (
+                                      <div className={`p-3 rounded border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                        <h3 className={`font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{parsed.integrated_thesis_and_recommendation.heading}</h3>
+                                        <div className="space-y-3">
+                                          <div>
+                                            <h4 className={`font-semibold text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Analysis:</h4>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{parsed.integrated_thesis_and_recommendation.synthesis_paragraph}</p>
+                                          </div>
+                                          <div>
+                                            <h4 className={`font-semibold text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Conclusion:</h4>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{parsed.integrated_thesis_and_recommendation.final_conclusion}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                            } catch (e) {
+                              // Fallback to markdown rendering
+                            }
+                            
+                            return (
+                              <ReactMarkdown
+                                components={{
+                                  p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
+                                  ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                                  ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                                  li: ({children}) => <li className="ml-2">{children}</li>,
+                                  strong: ({children}) => <strong className="font-semibold">{children}</strong>
+                                }}
+                              >
+                                {msg.teamRun.content}
+                              </ReactMarkdown>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -943,10 +1229,11 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             </div>
           )}
           <div ref={messagesEndRef} />
+          <div className={`absolute bottom-0 mb-23 left-0 right-0 h-19 bg-gradient-to-t ${darkMode ? 'from-gray-800 via-gray-800/50' : 'from-white via-white/50'} to-transparent pointer-events-none`}></div>
         </div>
       </div>
 
-      <div className={`p-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <div className={`px-3 pb-3 pt-1`}>
         <div className="max-w-4xl mx-auto">
           <div className="relative">
             <textarea
@@ -987,7 +1274,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             </button>
           </div>
 
-          <p className={`text-center text-xs mt-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <p className={`text-center text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             AI agents can make mistakes. Consider checking important information.
           </p>
         </div>
@@ -1032,12 +1319,10 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                 {selectedTool.input && (
                   <div className="col-span-4">
                     <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Input:</label>
-                    <div className={`mt-2 p-2 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
-                      {Object.entries(selectedTool.input).map(([key, value]) => (
-                        <div key={key} className="mb-1">
-                          <span className="font-medium">{key}:</span> {String(value)}
-                        </div>
-                      ))}
+                    <div className={`mt-2 p-3 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+                      <ul className="list-disc list-inside space-y-1">
+                        {renderBulletPoints(selectedTool.input)}
+                      </ul>
                     </div>
                   </div>
                 )}
@@ -1046,43 +1331,92 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
               {selectedTool.result && (
                 <div>
                   <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Result:</label>
-                  <div className={`mt-2 p-4 rounded-lg max-h-[440px] overflow-y-auto ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+                  <div className={`mt-2 p-4 rounded-lg overflow-y-auto ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'}`} style={{maxHeight: 'calc(80vh - 270px)'}}>
                     {(() => {
+                      let parsed = null;
+                      
+                      // Comprehensive HTML entity decoding
+                      let cleanResult = selectedTool.result;
+                      
+                      // Handle multiple levels of HTML encoding
+                      const htmlDecode = (str) => {
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = str;
+                        return txt.value;
+                      };
+                      
+                      // Decode HTML entities multiple times if needed
+                      let prevResult = '';
+                      while (cleanResult !== prevResult) {
+                        prevResult = cleanResult;
+                        cleanResult = htmlDecode(cleanResult);
+                      }
+                      
+                      // Try to parse as JSON first
                       try {
-                        const parsed = JSON.parse(selectedTool.result);
-                        if (Array.isArray(parsed) && (selectedTool.name.includes('search') || selectedTool.name.includes('news'))) {
+                        parsed = JSON.parse(cleanResult);
+                      } catch (jsonError) {
+                        // If JSON parsing fails, try to use eval for Python dict
+                        try {
+                          // Replace numpy references before eval
+                          const cleanedForEval = cleanResult.replace(/np\.float64\(([^)]+)\)/g, '$1');
+                          const evalResult = eval('(' + cleanedForEval + ')');
+                          parsed = evalResult;
+                        } catch (finalError) {
+                          // If both fail, display as plain text
                           return (
-                            <div className="grid grid-cols-3 gap-4">
-                              {parsed.map((item, index) => (
-                                <div key={index} className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                                  {item.title && (
-                                    <h4 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</h4>
-                                  )}
-                                  {item.body && (
-                                    <p className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.body}</p>
-                                  )}
-                                  {item.image && (
-                                    <img src={item.image} alt="Search result" className="w-full h-32 object-cover rounded mt-2" />
-                                  )}
-                                  {(item.url || item.href) && (
-                                    <a href={item.url || item.href} target="_blank" rel="noopener noreferrer" className={`text-sm underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                                      View Source
-                                    </a>
-                                  )}
-                                </div>
-                              ))}
+                            <div className={`text-sm font-mono whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                              {selectedTool.result}
                             </div>
                           );
                         }
-                        if (typeof parsed === 'object' && parsed !== null) {
-                          return Object.entries(parsed).map(([key, value]) => (
-                            <div key={key} className="mb-2">
-                              <span className="font-medium">{key}:</span> {String(value)}
-                            </div>
-                          ));
-                        }
-                      } catch {}
-                      return String(selectedTool.result);
+                      }
+                      
+
+                      
+                      // Special handling for search/news results
+                      if (Array.isArray(parsed) && (selectedTool.name.includes('search') || selectedTool.name.includes('news'))) {
+                        return (
+                          <div className="grid grid-cols-3 gap-4">
+                            {parsed.map((item, index) => (
+                              <div key={index} className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                {item.title && (
+                                  <h4 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.title}</h4>
+                                )}
+                                {item.body && (
+                                  <p className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.body}</p>
+                                )}
+                                {item.image && (
+                                  <img src={item.image} alt="Search result" className="w-full h-32 object-cover rounded mt-2" />
+                                )}
+                                {(item.url || item.href) && (
+                                  <a href={item.url || item.href} target="_blank" rel="noopener noreferrer" className={`text-sm underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                    View Source
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+                      
+                      // General JSON/dictionary formatting as bullet points
+                      if (parsed) {
+                        return (
+                          <div className="text-sm leading-relaxed">
+                            <ul className="list-none space-y-1">
+                              {renderBulletPoints(parsed)}
+                            </ul>
+                          </div>
+                        );
+                      }
+                      
+                      // Fallback to plain text if parsing failed
+                      return (
+                        <div className={`text-sm font-mono whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                          {selectedTool.result}
+                        </div>
+                      );
                     })()}
                   </div>
                 </div>
