@@ -21,7 +21,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
       darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
     }`}>
       <div className="flex items-center gap-3">
-        <button
+        {/* <button
           onClick={onToggleSidebar}
           className={`p-2 rounded-lg transition-all duration-200 ease-out hover:scale-110 active:scale-95 ${
             darkMode 
@@ -30,7 +30,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
           }`}
         >
           <Menu size={20} />
-        </button>
+        </button> */}
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--primary)' }}>
           <span className="text-white font-bold text-sm">PQ</span>
         </div>
@@ -38,7 +38,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
       </div>
       
       <div className="flex items-center gap-3">
-        <button
+        {/* <button
           onClick={onToggleAgents}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ease-out hover:scale-105 active:scale-95 ${
             showAgents 
@@ -50,7 +50,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
           style={showAgents ? { backgroundColor: 'var(--primary)' } : {}}
         >
           {showAgents ? 'Hide Agents' : 'Show Agents'}
-        </button>
+        </button> */}
         
         <ColorPicker
           color={tempColor}
