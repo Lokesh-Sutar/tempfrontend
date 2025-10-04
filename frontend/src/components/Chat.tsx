@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, ChevronDown, ChevronUp, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { ConductorCard } from './ConductorCard'
+import remarkGfm from 'remark-gfm'
 
 interface ChatProps {
   darkMode: boolean
@@ -45,6 +45,29 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
   const [, forceUpdate] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const markdownComponents = {
+    h1: ({children}: any) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h1>,
+    h2: ({children}: any) => <h2 className={`text-base font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h2>,
+    h3: ({children}: any) => <h3 className={`text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</h3>,
+    p: ({children}: any) => <p className={`mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{children}</p>,
+    ul: ({children}: any) => <ul className={`mb-2 ml-4 space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{children}</ul>,
+    ol: ({children}: any) => <ol className={`list-decimal list-inside mb-2 ml-4 space-y-1 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{children}</ol>,
+    li: ({children}: any) => <li className={`${darkMode ? 'text-gray-200' : 'text-gray-800'} flex items-start`}><span className="mr-2 font-bold text-lg">•</span><span className="flex-1">{children}</span></li>,
+    strong: ({children}: any) => <strong className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</strong>,
+    em: ({children}: any) => <em className={`italic ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</em>,
+    code: ({children}: any) => <code className={`px-1 py-0.5 rounded text-xs font-mono ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200 text-gray-800'}`}>{children}</code>,
+    pre: ({children}: any) => <pre className={`p-3 rounded-lg overflow-x-auto text-sm font-mono mb-2 ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200 text-gray-800'}`}>{children}</pre>,
+    blockquote: ({children}: any) => <blockquote className={`border-l-4 pl-4 italic mb-2 ${darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-300 text-gray-600'}`}>{children}</blockquote>,
+    table: ({children}: any) => <table className={`min-w-full mb-4 border-collapse ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>{children}</table>,
+    thead: ({children}: any) => <thead className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>{children}</thead>,
+    tbody: ({children}: any) => <tbody>{children}</tbody>,
+    tr: ({children}: any) => <tr className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>{children}</tr>,
+    th: ({children}: any) => <th className={`px-3 py-2 text-left font-semibold ${darkMode ? 'text-white border-gray-600' : 'text-gray-900 border-gray-300'} border`}>{children}</th>,
+    td: ({children}: any) => <td className={`px-3 py-2 ${darkMode ? 'text-gray-200 border-gray-600' : 'text-gray-800 border-gray-300'} border`}>{children}</td>,
+    hr: () => <hr className={`my-3 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`} />,
+    br: () => <br />
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -95,11 +118,60 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       
       let currentCards: AgentCard[] = []
 
+      const handleAgentTool = (data: any, agentTitle: string) => {
+        const toolName = data.payload?.tool?.tool_name
+        const agentName = data.payload?.agent_name
+        
+        if (data.event === 'ToolCallStarted' && toolName && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory' && agentName) {
+          const toolArgs = data.payload?.tool?.tool_args
+          const agentCards = currentCards.filter(card => card.title === agentTitle)
+          const latestCard = agentCards[agentCards.length - 1]
+          
+          currentCards = currentCards.map(card => 
+            card.id === latestCard?.id ? { ...card, tools: [...card.tools, { name: toolName, startTime: Date.now(), args: toolArgs }] } : card
+          )
+          
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1]
+            if (lastMsg && lastMsg.type === 'ai-processing') {
+              return [...prev.slice(0, -1), { ...lastMsg, cards: currentCards }]
+            }
+            return prev
+          })
+        }
+        
+        if (data.event === 'ToolCallCompleted' && toolName && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory' && agentName) {
+          const duration = data.payload?.tool?.metrics?.duration
+          const result = data.payload?.tool?.result
+          const agentCards = currentCards.filter(card => card.title === agentTitle)
+          const latestCard = agentCards[agentCards.length - 1]
+          
+          console.log(`🔧 ToolCallCompleted (${agentName}) EVENT:`, data.payload?.tool)
+          currentCards = currentCards.map(card => {
+            if (card.id === latestCard?.id) {
+              const updatedTools = card.tools.map(tool => 
+                tool.name === toolName && !tool.duration ? { ...tool, duration, result } : tool
+              )
+              return { ...card, tools: updatedTools }
+            }
+            return card
+          })
+          
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1]
+            if (lastMsg && lastMsg.type === 'ai-processing') {
+              return [...prev.slice(0, -1), { ...lastMsg, cards: currentCards }]
+            }
+            return prev
+          })
+        }
+      }
+
       eventSource.addEventListener('tool', (event) => {
         const data = JSON.parse(event.data)
         
         if (data.event === 'TeamToolCallStarted') {
-          console.log('🔧 TeamToolCallStarted EVENT:', JSON.stringify(data, null, 2))
+          console.log(`🔧 TeamToolCallStarted (${data.payload?.tool?.tool_args?.member_id}) EVENT:`, JSON.stringify(data.payload?.tool?.tool_args?.task_description, null, 2))
           const toolName = data.payload?.tool?.tool_name
           const memberId = data.payload?.tool?.tool_args?.member_id
           const taskDescription = data.payload?.tool?.tool_args?.task_description
@@ -109,6 +181,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             let title = ''
             if (memberId === 'agent-1') title = 'Finance Agent'
             else if (memberId === 'agent-2') title = 'Sentiment Agent'
+            else if (memberId === 'agent-3') title = 'Advisory Agent'
             
             if (title) {
               const newCard: AgentCard = {
@@ -137,15 +210,19 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         }
         
         if (data.event === 'TeamToolCallCompleted') {
-          console.log('🔧 TeamToolCallCompleted EVENT:', JSON.stringify(data, null, 2))
+          console.log(`🔧 TeamToolCallCompleted (${data.payload?.tool?.tool_args?.member_id}) EVENT:`, JSON.stringify(data.payload?.tool?.result, null, 2))
           const toolName = data.payload?.tool?.tool_name
           const result = data.payload?.tool?.result
           const runId = data.meta?.runId
           
           if (toolName === 'delegate_task_to_member' && result && runId) {
             const memberId = data.payload?.tool?.tool_args?.member_id
+            // Find the most recent card for this member since runIds might be different
+            const memberCards = currentCards.filter(card => card.id.includes(memberId))
+            const latestMemberCard = memberCards[memberCards.length - 1]
+            
             currentCards = currentCards.map(card => 
-              card.runId === runId && card.id.includes(memberId) ? { ...card, content: result, taskDescription: undefined } : card
+              card.id === latestMemberCard?.id ? { ...card, content: result, taskDescription: undefined } : card
             )
             
             setMessages(prev => {
@@ -160,98 +237,22 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       })
 
       eventSource.addEventListener('tool-finance', (event) => {
-        const data = JSON.parse(event.data)
-        const toolName = data.payload?.tool?.tool_name
-        const agentName = data.payload?.agent_name
-        
-        if (data.event === 'ToolCallStarted' && toolName && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory' && agentName) {
-          const toolArgs = data.payload?.tool?.tool_args
-          currentCards = currentCards.map(card => 
-            card.title === 'Finance Agent' ? { ...card, tools: [...card.tools, { name: toolName, startTime: Date.now(), args: toolArgs }] } : card
-          )
-          
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1]
-            if (lastMsg && lastMsg.type === 'ai-processing') {
-              return [...prev.slice(0, -1), { ...lastMsg, cards: currentCards }]
-            }
-            return prev
-          })
-        }
-        
-        if (data.event === 'ToolCallCompleted' && toolName && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory' && agentName) {
-          console.log('🔧 ToolCallCompleted (FINANCE) EVENT:', JSON.stringify(data, null, 2))
-          const duration = data.payload?.tool?.metrics?.duration
-          const result = data.payload?.tool?.result
-          currentCards = currentCards.map(card => {
-            if (card.title === 'Finance Agent') {
-              const updatedTools = card.tools.map(tool => 
-                tool.name === toolName && !tool.duration ? { ...tool, duration, result } : tool
-              )
-              return { ...card, tools: updatedTools }
-            }
-            return card
-          })
-          
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1]
-            if (lastMsg && lastMsg.type === 'ai-processing') {
-              return [...prev.slice(0, -1), { ...lastMsg, cards: currentCards }]
-            }
-            return prev
-          })
-        }
+        handleAgentTool(JSON.parse(event.data), 'Finance Agent')
       })
 
       eventSource.addEventListener('tool-sentiment', (event) => {
-        const data = JSON.parse(event.data)
-        const toolName = data.payload?.tool?.tool_name
-        const agentName = data.payload?.agent_name
-        
-        if (data.event === 'ToolCallStarted' && toolName && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory' && agentName) {
-          const toolArgs = data.payload?.tool?.tool_args
-          currentCards = currentCards.map(card => 
-            card.title === 'Sentiment Agent' ? { ...card, tools: [...card.tools, { name: toolName, startTime: Date.now(), args: toolArgs }] } : card
-          )
-          
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1]
-            if (lastMsg && lastMsg.type === 'ai-processing') {
-              return [...prev.slice(0, -1), { ...lastMsg, cards: currentCards }]
-            }
-            return prev
-          })
-        }
-        
-        if (data.event === 'ToolCallCompleted' && toolName && toolName !== 'delegate_task_to_member' && toolName !== 'update_user_memory' && agentName) {
-          console.log('🔧 ToolCallCompleted (Sentiment) EVENT:', JSON.stringify(data, null, 2))
-          const duration = data.payload?.tool?.metrics?.duration
-          const result = data.payload?.tool?.result
-          currentCards = currentCards.map(card => {
-            if (card.title === 'Sentiment Agent') {
-              const updatedTools = card.tools.map(tool => 
-                tool.name === toolName && !tool.duration ? { ...tool, duration, result } : tool
-              )
-              return { ...card, tools: updatedTools }
-            }
-            return card
-          })
-          
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1]
-            if (lastMsg && lastMsg.type === 'ai-processing') {
-              return [...prev.slice(0, -1), { ...lastMsg, cards: currentCards }]
-            }
-            return prev
-          })
-        }
+        handleAgentTool(JSON.parse(event.data), 'Sentiment Agent')
+      })
+
+      eventSource.addEventListener('tool-advisory', (event) => {
+        handleAgentTool(JSON.parse(event.data), 'Advisory Agent')
       })
 
       eventSource.addEventListener('run', (event) => {
         const data = JSON.parse(event.data)
         
         if (data.event === 'TeamRunCompleted') {
-          console.log('🏁 TeamRunCompleted EVENT:', JSON.stringify(data, null, 2))
+          console.log('🏁 TeamRunCompleted EVENT:', data.payload)
           setLoading(false)
           
           const finalCard = {
@@ -460,9 +461,20 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                         )}
                         {card.content && (
                           <div>
-                            {card.title !== 'Error' && <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Content:</div>}
+                            {card.title !== 'Error' && <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}></div>} {/*Content:*/}
                             <div className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                              <ReactMarkdown>{card.content}</ReactMarkdown>
+                              {(() => {
+                                try {
+                                  return (
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                      {card.content.replace(/\n/g, '  \n')}
+                                    </ReactMarkdown>
+                                  )
+                                } catch (error) {
+                                  console.error('Agent card markdown render error:', error)
+                                  return <pre className={`whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{card.content}</pre>
+                                }
+                              })()}
                             </div>
                           </div>
                         )}
@@ -490,7 +502,25 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                     {renderCards(msg.cards || [], i.toString())}
                     
                     {msg.finalCard && (
-                      <ConductorCard content={msg.finalCard.content} darkMode={darkMode} />
+                      <div className={`border rounded-lg ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-white'}`}>
+                        <div className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{msg.finalCard.title}</div>
+                        <div className={`px-3 py-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                          <div className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                            {(() => {
+                              try {
+                                return (
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                    {msg.finalCard.content.replace(/\n/g, '  \n')}
+                                  </ReactMarkdown>
+                                )
+                              } catch (error) {
+                                console.error('Markdown render error:', error)
+                                return <pre className={`whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{msg.finalCard.content}</pre>
+                              }
+                            })()}
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

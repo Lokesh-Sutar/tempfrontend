@@ -5,6 +5,7 @@ import { LeftSidebar } from './components/LeftSidebar'
 import { Chat } from './components/Chat'
 import { RightAgentPanel } from './components/RightAgentPanel'
 import { ResizablePanel } from './components/ResizablePanel'
+import { MarkdownTest } from './components/MarkdownTest'
 
 function AppContent() {
   const { theme, setTheme } = useTheme()
@@ -12,6 +13,7 @@ function AppContent() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [primaryColor, setPrimaryColor] = useState('#3b82f6')
   const [tempColor, setTempColor] = useState('#3b82f6')
+  const [showMarkdownTest, setShowMarkdownTest] = useState(false)
 
   const [agentStatuses, setAgentStatuses] = useState({
     Watcher: 'Ready' as const,
@@ -55,6 +57,15 @@ function AppContent() {
     const defaultColor = isDark ? '#2563eb' : '#3b82f6'
     setTempColor(defaultColor)
     setPrimaryColor(defaultColor)
+  }
+
+  // Check URL for test mode
+  useEffect(() => {
+    setShowMarkdownTest(window.location.pathname === '/test')
+  }, [])
+
+  if (showMarkdownTest) {
+    return <MarkdownTest />
   }
 
   return (
