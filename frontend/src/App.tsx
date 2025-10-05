@@ -54,7 +54,7 @@ function AppContent() {
   }
 
   const resetColor = () => {
-    const defaultColor = isDark ? '#2563eb' : '#3b82f6'
+    const defaultColor = isDark ? '#6366f1' : '#3b82f6'
     setTempColor(defaultColor)
     setPrimaryColor(defaultColor)
   }

@@ -18,14 +18,14 @@ interface HeaderProps {
 export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents, onToggleSidebar, showSidebar, primaryColor, tempColor, onColorChange, onConfirmColor, onResetColor }: HeaderProps) {
   return (
     <header className={`h-16 px-6 flex items-center justify-between border-b ${
-      darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
+      darkMode ? 'bg-neutral-950 border-neutral-700 text-white' : 'bg-white border-gray-200 text-gray-900'
     }`}>
       <div className="flex items-center gap-3">
         {/* <button
           onClick={onToggleSidebar}
           className={`p-2 rounded-lg transition-all duration-200 ease-out hover:scale-110 active:scale-95 ${
             darkMode 
-              ? 'text-gray-300 hover:bg-gray-800' 
+              ? 'text-neutral-300 hover:bg-neutral-800' 
               : 'text-gray-700 hover:bg-gray-100'
           }`}
         >
@@ -44,7 +44,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
             showAgents 
               ? 'text-white' 
               : darkMode 
-                ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
+                ? 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
           style={showAgents ? { backgroundColor: 'var(--primary)' } : {}}
@@ -64,7 +64,7 @@ export function Header({ darkMode, onToggleDarkMode, onToggleAgents, showAgents,
           onClick={onToggleDarkMode}
           className={`p-2 rounded-lg transition-all duration-200 ease-out hover:scale-110 active:scale-95 ${
             darkMode 
-              ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
+              ? 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700' 
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
