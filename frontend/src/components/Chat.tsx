@@ -51,12 +51,15 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Extract tickers from content
-  const extractTickers = (content: string): string[] => {
-    const tickerRegex = /\b[A-Z]{2,5}\b/g
-    const matches = content.match(tickerRegex) || []
-    const commonTickers = ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD', 'NFLX', 'CRM', 'AVGO', 'ANET']
-    return [...new Set(matches.filter(ticker => commonTickers.includes(ticker)))]
+  const processTickers = (tickers: string[]): string[] => {
+    return tickers
+      .filter(ticker => ticker !== '^VIX')
+      .map(ticker => {
+        if (ticker.endsWith('.BO') || ticker.endsWith('.NS') || ticker.endsWith('.NSE') || ticker.endsWith('.BSE')) {
+          return 'BSE:' + ticker.split('.')[0]
+        }
+        return ticker
+      })
   }
 
   const markdownComponents = {
@@ -276,7 +279,9 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           setLoading(false)
           
           const content = data.payload?.content || ''
-          const tickers = extractTickers(content)
+          const tickers = processTickers(data.tickers || [])
+          console.log('TeamRunCompleted TICKERS:', tickers)
+
           const finalCard = {
             title: 'Conductor',
             content: content,
@@ -319,7 +324,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             if (errorData.error) {
               errorMessage = errorData.error
             }
-          } catch {}
+          } catch { }
         }
         
         const errorCard: AgentCard = {
@@ -426,7 +431,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                 return (
                   <div key={card.id} className={`border rounded-lg ${darkMode ? 'border-neutral-600 bg-neutral-800' : 'border-gray-200 bg-white'}`}>
                     <div 
-                      className={`p-3 cursor-pointer flex items-center justify-between ${
+                      className={`p-3 cursor-pointer flex items-center justify-between rounded-t-lg ${
                         card.title === 'Finance Agent' ? (darkMode ? 'bg-green-900/30 hover:bg-green-800/40' : 'bg-green-100/50 hover:bg-green-200/60') :
                         card.title === 'Sentiment Agent' ? (darkMode ? 'bg-orange-900/30 hover:bg-orange-800/40' : 'bg-orange-100/50 hover:bg-orange-200/60') :
                         card.title === 'Advisory Agent' ? (darkMode ? 'bg-blue-900/30 hover:bg-blue-800/40' : 'bg-blue-100/50 hover:bg-blue-200/60') :
@@ -541,19 +546,15 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                     
                     {msg.finalCard && (
                       <div className={`border rounded-lg ${darkMode ? 'border-neutral-600 bg-neutral-800' : 'border-gray-200 bg-white'}`}>
-                        <div className={`p-3 font-medium ${darkMode ? 'text-white bg-yellow-900/30' : 'text-gray-900 bg-yellow-100/50'} flex items-center gap-2`}>
+                        <div className={`p-3 font-medium rounded-t-lg ${darkMode ? 'text-white bg-yellow-900/30' : 'text-gray-900 bg-yellow-100/50'} flex items-center gap-2`}>
                           <FontAwesomeIcon icon={faClipboardList} className={`${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`} />
                           {msg.finalCard.title}
                         </div>
                         <div className={`px-3 py-3 border-t ${darkMode ? 'border-neutral-600' : 'border-gray-200'}`}>
                           {/* TradingView Charts for detected tickers */}
                           {msg.finalCard.tickers && msg.finalCard.tickers.length > 0 && (
-                            <div className="mb-4 space-y-4">
-                              {msg.finalCard.tickers.map((ticker, index) => (
-                                <div key={`${ticker}-${index}`} className={`rounded-lg border p-3 ${darkMode ? 'border-neutral-600 bg-neutral-700' : 'border-gray-200 bg-gray-50'}`}>
-                                  <TradingViewWidget symbol={ticker} darkMode={darkMode} />
-                                </div>
-                              ))}
+                            <div className="mb-4">
+                              <TradingViewWidget symbols={msg.finalCard.tickers} darkMode={darkMode} />
                             </div>
                           )}
                           <div className={`text-sm ${darkMode ? 'text-neutral-200' : 'text-gray-800'}`}>

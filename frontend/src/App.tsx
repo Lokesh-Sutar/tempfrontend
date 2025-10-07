@@ -11,8 +11,14 @@ function AppContent() {
   const { theme, setTheme } = useTheme()
   const [showAgents, setShowAgents] = useState(false)
   const [showSidebar, setShowSidebar] = useState(false)
-  const [primaryColor, setPrimaryColor] = useState('#3b82f6')
-  const [tempColor, setTempColor] = useState('#3b82f6')
+  const [primaryColor, setPrimaryColor] = useState(() => {
+    const saved = localStorage.getItem('primary-color')
+    return saved || '#3b82f6'
+  })
+  const [tempColor, setTempColor] = useState(() => {
+    const saved = localStorage.getItem('primary-color')
+    return saved || '#3b82f6'
+  })
   const [showMarkdownTest, setShowMarkdownTest] = useState(false)
 
   const [agentStatuses, setAgentStatuses] = useState({
@@ -51,12 +57,14 @@ function AppContent() {
 
   const confirmColor = () => {
     setPrimaryColor(tempColor)
+    localStorage.setItem('primary-color', tempColor)
   }
 
   const resetColor = () => {
     const defaultColor = isDark ? '#6366f1' : '#3b82f6'
     setTempColor(defaultColor)
     setPrimaryColor(defaultColor)
+    localStorage.setItem('primary-color', defaultColor)
   }
 
   // Check URL for test mode
