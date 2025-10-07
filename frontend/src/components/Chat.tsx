@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faMoneyBillTrendUp, faPeopleGroup, faUserTie, faClipboardList, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons'
+import { TradingViewWidget } from './TradingViewWidget'
+
 
 interface ChatProps {
   darkMode: boolean
@@ -35,7 +37,8 @@ interface Message {
   type: 'user' | 'ai-processing' | 'ai-response'
   content: string
   cards?: AgentCard[]
-  finalCard?: { title: string; content: string }
+  finalCard?: { title: string; content: string; tickers?: string[] }
+  tickers?: string[]
 }
 
 export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick, onToolsCompleted, onToggleAgents }: ChatProps) {
@@ -47,6 +50,14 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
   const [, forceUpdate] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Extract tickers from content
+  const extractTickers = (content: string): string[] => {
+    const tickerRegex = /\b[A-Z]{2,5}\b/g
+    const matches = content.match(tickerRegex) || []
+    const commonTickers = ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD', 'NFLX', 'CRM', 'AVGO', 'ANET']
+    return [...new Set(matches.filter(ticker => commonTickers.includes(ticker)))]
+  }
 
   const markdownComponents = {
     h1: ({children}: any) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h1>,
@@ -148,7 +159,8 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
           const agentCards = currentCards.filter(card => card.title === agentTitle)
           const latestCard = agentCards[agentCards.length - 1]
           
-          console.log(`🔧 ToolCallCompleted (${agentName}) EVENT:`, data.payload?.tool)
+          // console.log(`🔧 ToolCallCompleted (${agentName}) EVENT:`, data.payload?.tool)
+          console.log(`🔧 ToolCallCompleted (${agentName}) EVENT:`, data)
           currentCards = currentCards.map(card => {
             if (card.id === latestCard?.id) {
               const updatedTools = card.tools.map(tool => 
@@ -259,12 +271,16 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         const data = JSON.parse(event.data)
         
         if (data.event === 'TeamRunCompleted') {
-          console.log('🏁 TeamRunCompleted EVENT:', data.payload)
+          // console.log('🏁 TeamRunCompleted EVENT:', data.payload)
+          console.log('🏁 TeamRunCompleted EVENT:', data)
           setLoading(false)
           
+          const content = data.payload?.content || ''
+          const tickers = extractTickers(content)
           const finalCard = {
             title: 'Conductor',
-            content: data.payload?.content || ''
+            content: content,
+            tickers: tickers
           }
           
           // Close processing cards when completed
@@ -530,6 +546,16 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                           {msg.finalCard.title}
                         </div>
                         <div className={`px-3 py-3 border-t ${darkMode ? 'border-neutral-600' : 'border-gray-200'}`}>
+                          {/* TradingView Charts for detected tickers */}
+                          {msg.finalCard.tickers && msg.finalCard.tickers.length > 0 && (
+                            <div className="mb-4 space-y-4">
+                              {msg.finalCard.tickers.map((ticker, index) => (
+                                <div key={`${ticker}-${index}`} className={`rounded-lg border p-3 ${darkMode ? 'border-neutral-600 bg-neutral-700' : 'border-gray-200 bg-gray-50'}`}>
+                                  <TradingViewWidget symbol={ticker} darkMode={darkMode} />
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div className={`text-sm ${darkMode ? 'text-neutral-200' : 'text-gray-800'}`}>
                             {(() => {
                               try {
