@@ -2,97 +2,74 @@ import { useEffect, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCaretLeft, faCaretRight } from '@fortawesome/free-solid-svg-icons'
 
+// Props interface for TradingView widget component
 interface TradingViewWidgetProps {
   symbols: string[]
   darkMode: boolean
 }
 
+// TradingView chart widget with theme support and navigation
 export function TradingViewWidget({ symbols, darkMode }: TradingViewWidgetProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const darkContainerRefs = useRef<(HTMLDivElement | null)[]>([])
   const lightContainerRefs = useRef<(HTMLDivElement | null)[]>([])
 
+  // Create TradingView chart configurations for both themes
+  const createChartConfig = (symbol: string, index: number, isDark: boolean) => ({
+    autosize: true,
+    symbol: symbol,
+    timezone: 'Asia/Kolkata',
+    theme: isDark ? 'dark' : 'light',
+    style: '10',
+    locale: 'en',
+    backgroundColor: isDark ? '#171717' : '#ffffff',
+    gridColor: isDark ? '#404040' : '#e5e7eb',
+    allow_symbol_change: true,
+    hide_top_toolbar: true,
+    hide_legend: false,
+    hide_side_toolbar: true,
+    hide_volume: false,
+    save_image: false,
+    extended_hours: false,
+    range: '1M',
+    show_popup_button: false,
+    popup_width: '1000',
+    popup_height: '650',
+    withdateranges: true,
+    details: true,
+    hotlist: false,
+    fundamental: false,
+    percentage: false,
+    container_id: `tradingview_chart_${isDark ? 'dark' : 'light'}_${index}`,
+    width: '100%',
+    height: '100%',
+    support_host: 'https://www.tradingview.com'
+  })
+
+  // Initialize TradingView charts for all symbols
   useEffect(() => {
     if (!symbols?.length) return
 
     symbols.forEach((symbol, index) => {
+      // Create dark theme chart
       const darkContainer = darkContainerRefs.current[index]
       if (darkContainer && darkContainer.children.length === 0) {
         const darkScript = document.createElement('script')
         darkScript.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
         darkScript.type = 'text/javascript'
         darkScript.async = true
-        darkScript.innerHTML = JSON.stringify({
-          autosize: true,
-          symbol: symbol,
-          // interval: '30',
-          timezone: 'Asia/Kolkata',
-          theme: 'dark',
-          style: '10',
-          locale: 'en',
-          backgroundColor: '#171717',
-          gridColor: '#404040',
-          allow_symbol_change: true,
-          hide_top_toolbar: true,
-          hide_legend: false,
-          hide_side_toolbar: true,
-          hide_volume: false,
-          save_image: false,
-          extended_hours: false,
-          range: '1M',
-          show_popup_button: false,
-          popup_width: '1000',
-          popup_height: '650',
-          withdateranges: true,
-          details: true,
-          hotlist: false,
-          fundamental: false,
-          percentage: false,
-          container_id: `tradingview_chart_dark_${index}`,
-          width: '100%',
-          height: '100%',
-          support_host: 'https://www.tradingview.com'
-        })
+        darkScript.innerHTML = JSON.stringify(createChartConfig(symbol, index, true))
         darkContainer.appendChild(darkScript)
       }
 
+      // Create light theme chart
       const lightContainer = lightContainerRefs.current[index]
       if (lightContainer && lightContainer.children.length === 0) {
         const lightScript = document.createElement('script')
         lightScript.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
         lightScript.type = 'text/javascript'
         lightScript.async = true
-        lightScript.innerHTML = JSON.stringify({
-          autosize: true,
-          symbol: symbol,
-          // interval: '30',
-          timezone: 'Asia/Kolkata',
-          theme: 'light',
-          style: '10',
-          locale: 'en',
-          backgroundColor: '#ffffff',
-          gridColor: '#e5e7eb',
-          allow_symbol_change: true,
-          hide_top_toolbar: true,
-          hide_legend: false,
-          hide_side_toolbar: true,
-          hide_volume: false,
-          save_image: false,
-          extended_hours: false,
-          range: '1M',
-          show_popup_button: false,
-          popup_width: '1000',
-          popup_height: '650',
-          withdateranges: true,
-          details: true,
-          hotlist: false,
-          fundamental: false,
-          percentage: false,
-          container_id: `tradingview_chart_light_${index}`,
-          width: '100%',
-          height: '100%',
-          support_host: 'https://www.tradingview.com'
-        })
+        lightScript.innerHTML = JSON.stringify(createChartConfig(symbol, index, false))
         lightContainer.appendChild(lightScript)
       }
     })
@@ -103,7 +80,9 @@ export function TradingViewWidget({ symbols, darkMode }: TradingViewWidgetProps)
   return (
     <div className="w-full relative">
       <div className={`w-full h-124 mb-2 rounded-sm border-0 relative overflow-hidden ${darkMode ? 'border-[#525252]' : 'border-[#d4d4d4]'}`}>
+        {/* Chart containers */}
         <div className="absolute inset-0 rounded-sm overflow-hidden">
+          {/* Dark theme charts */}
           {symbols.map((symbol, index) => (
             <div
               key={`dark-${symbol}`}
@@ -112,6 +91,7 @@ export function TradingViewWidget({ symbols, darkMode }: TradingViewWidgetProps)
               style={{ display: darkMode && index === currentIndex ? 'block' : 'none' }}
             />
           ))}
+          {/* Light theme charts */}
           {symbols.map((symbol, index) => (
             <div
               key={`light-${symbol}`}
@@ -121,6 +101,8 @@ export function TradingViewWidget({ symbols, darkMode }: TradingViewWidgetProps)
             />
           ))}
         </div>
+        
+        {/* Navigation buttons for multiple symbols */}
         {symbols.length > 1 && (
           <>
             <button

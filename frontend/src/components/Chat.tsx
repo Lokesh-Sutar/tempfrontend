@@ -7,13 +7,11 @@ import { faMoneyBillTrendUp, faPeopleGroup, faUserTie, faClipboardList, faMagnif
 import { TradingViewWidget } from './TradingViewWidget'
 
 
+// Props interface for Chat component
 interface ChatProps {
   darkMode: boolean
   onMessageSent?: () => void
-  onSearchResults?: (results: any) => void
-  onWatcherClick?: () => void
   onToolsCompleted?: () => void
-  onToggleAgents?: () => void
 }
 
 interface AgentCard {
@@ -41,7 +39,7 @@ interface Message {
   tickers?: string[]
 }
 
-export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick, onToolsCompleted, onToggleAgents }: ChatProps) {
+export function Chat({ darkMode, onMessageSent, onToolsCompleted }: ChatProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
@@ -51,6 +49,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Process ticker symbols for TradingView compatibility
   const processTickers = (tickers: string[]): string[] => {
     return tickers
       .filter(ticker => ticker !== '^VIX')
@@ -62,6 +61,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       })
   }
 
+  // Custom markdown components for consistent styling
   const markdownComponents = {
     h1: ({children}: any) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h1>,
     h2: ({children}: any) => <h2 className={`text-base font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h2>,
@@ -85,9 +85,6 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
     br: () => <br />
   }
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
 
   // Timer to update running tool times
   useEffect(() => {
@@ -112,6 +109,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
     return () => document.removeEventListener('keydown', handleEsc)
   }, [selectedTool])
 
+  // Send message to backend and handle streaming response
   const sendMessage = async () => {
     if (!input.trim()) return
 
@@ -123,6 +121,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
     setInput('')
     setLoading(true)
     
+    // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = '56px'
     }
@@ -134,6 +133,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
       
       let currentCards: AgentCard[] = []
 
+      // Handle individual agent tool events (start/complete)
       const handleAgentTool = (data: any, agentTitle: string) => {
         const toolName = data.payload?.tool?.tool_name
         const agentName = data.payload?.agent_name
@@ -184,6 +184,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         }
       }
 
+      // Handle team-level tool events (delegation)
       eventSource.addEventListener('tool', (event) => {
         const data = JSON.parse(event.data)
         
@@ -270,6 +271,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         handleAgentTool(JSON.parse(event.data), 'Search Agent')
       })
 
+      // Handle run completion events
       eventSource.addEventListener('run', (event) => {
         const data = JSON.parse(event.data)
         
@@ -314,6 +316,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         }
       })
 
+      // Handle error events
       eventSource.addEventListener('error', (event) => {
         setLoading(false)
         
@@ -361,6 +364,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
     }
   }
 
+  // Recursively render nested data as bullet points
   const renderBulletPoints = (data: any, depth: number = 0): JSX.Element[] => {
     const items: JSX.Element[] = []
     
@@ -425,6 +429,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
             const isProcessing = msg.type === 'ai-processing'
             const isAiResponse = msg.type === 'ai-response'
             
+            // Render agent cards with expandable content
             const renderCards = (cards: AgentCard[], keyPrefix: string = '') => (
               cards?.map((card) => {
                 const expandKey = keyPrefix ? `${keyPrefix}-${card.id}` : card.id
@@ -436,6 +441,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                         card.title === 'Sentiment Agent' ? (darkMode ? 'bg-orange-900/30 hover:bg-orange-800/40' : 'bg-orange-100/50 hover:bg-orange-200/60') :
                         card.title === 'Advisory Agent' ? (darkMode ? 'bg-blue-900/30 hover:bg-blue-800/40' : 'bg-blue-100/50 hover:bg-blue-200/60') :
                         card.title === 'Search Agent' ? (darkMode ? 'bg-neutral-700/30 hover:bg-neutral-600/40' : 'bg-gray-200/50 hover:bg-gray-300/60') :
+                        card.title === 'Error' ? (darkMode ? 'bg-red-900/30 hover:bg-red-800/40' : 'bg-red-100/50 hover:bg-red-200/60') :
                         (darkMode ? 'bg-neutral-600/30 hover:bg-neutral-500/40' : 'bg-gray-100/50 hover:bg-gray-200/60')
                       }`}
                       onClick={() => setExpandedCards(prev => ({...prev, [expandKey]: !prev[expandKey]}))}
@@ -456,6 +462,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                             <div className={`text-sm font-medium mb-2 ${darkMode ? 'text-neutral-300' : 'text-gray-700'}`}>Tools Used:</div>
                             <div className="space-y-1">
                               {card.tools.map((tool, toolIndex) => {
+                                // Extract relevant parameter for display
                                 const getSymbol = () => {
                                   if (tool.args?.time_horizon) return `(${tool.args.time_horizon})`
                                   if (tool.args?.period) return `(${tool.args.period})`
@@ -466,6 +473,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                                   return ''
                                 }
                                 
+                                // Calculate tool execution time
                                 const getTime = () => {
                                   if (tool.duration) {
                                     return `${tool.duration.toFixed(1)}s`
@@ -551,7 +559,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
                           {msg.finalCard.title}
                         </div>
                         <div className={`px-3 py-3 border-t ${darkMode ? 'border-neutral-600' : 'border-gray-200'}`}>
-                          {/* TradingView Charts for detected tickers */}
+                          {/* Display TradingView charts for detected stock tickers */}
                           {msg.finalCard.tickers && msg.finalCard.tickers.length > 0 && (
                             <div className="mb-4">
                               <TradingViewWidget symbols={msg.finalCard.tickers} darkMode={darkMode} />
@@ -615,7 +623,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         </div>
       </div>
 
-      {/* Fade overlay above input */}
+      {/* Gradient fade overlay above input area */}
       <div className={`absolute bottom-0 left-0 right-0 mb-20 h-16 pointer-events-none bg-gradient-to-t ${darkMode ? 'from-neutral-900 via-neutral-900/80 to-transparent' : 'from-white via-white/80 to-transparent'}`}></div>
       
       <div className="px-3 pb-3 pt-1 relative z-10">
@@ -665,7 +673,7 @@ export function Chat({ darkMode, onMessageSent, onSearchResults, onWatcherClick,
         </div>
       </div>
 
-      {/* Tool Details Popup */}
+      {/* Modal popup for detailed tool information */}
       {selectedTool && (
         <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50" onClick={() => setSelectedTool(null)}>
           <div 

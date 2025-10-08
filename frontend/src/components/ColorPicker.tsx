@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { Edit3 } from 'lucide-react'
 
+// Props interface for ColorPicker component
 interface ColorPickerProps {
   color: string
   onChange: (color: string) => void
@@ -10,10 +11,12 @@ interface ColorPickerProps {
   darkMode: boolean
 }
 
+// Color picker component with popover interface
 export function ColorPicker({ color, onChange, onConfirm, onReset, darkMode }: ColorPickerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
 
+  // Close popover when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
@@ -29,6 +32,7 @@ export function ColorPicker({ color, onChange, onConfirm, onReset, darkMode }: C
 
   return (
     <div className="relative" ref={popoverRef}>
+      {/* Color picker trigger button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 rounded-lg cursor-pointer transition-all duration-200 ease-out hover:scale-110 active:scale-95"
@@ -38,11 +42,15 @@ export function ColorPicker({ color, onChange, onConfirm, onReset, darkMode }: C
         <Edit3 size={16} className="text-white" />
       </button>
       
+      {/* Color picker popover */}
       {isOpen && (
         <div className={`absolute top-12 right-0 p-3 rounded-lg shadow-lg border z-50 ${
           darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'
         }`}>
+          {/* Color picker widget */}
           <HexColorPicker color={color} onChange={onChange} />
+          
+          {/* Action buttons */}
           <div className="flex gap-2 mt-3">
             <button
               onClick={() => { onConfirm(); setIsOpen(false); }}
