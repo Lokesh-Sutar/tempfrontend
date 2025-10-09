@@ -79,7 +79,7 @@ export function TradingViewWidget({ symbols, darkMode }: TradingViewWidgetProps)
 
   return (
     <div className="w-full relative">
-      <div className={`w-full h-124 mb-2 rounded-sm border-0 relative overflow-hidden ${darkMode ? 'border-[#525252]' : 'border-[#d4d4d4]'}`}>
+      <div className={`w-full h-124 mb-2 rounded-sm border-0 relative overflow-visible ${darkMode ? 'border-[#525252]' : 'border-[#d4d4d4]'}`}>
         {/* Chart containers */}
         <div className="absolute inset-0 rounded-sm overflow-hidden">
           {/* Dark theme charts */}
